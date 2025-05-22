@@ -1,0 +1,19 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  db_citas: # Nombre del servicio de base de datos
+    image: postgres:15-alpine # Usamos una imagen ligera de PostgreSQL 15
+    container_name: postgres_citas_db # Nombre que tendrá el contenedor Docker
+    restart: always
+    environment:
+      POSTGRES_USER: dev_user      # <--- CAMBIA ESTO si quieres (ej. por tu nombre)
+      POSTGRES_PASSWORD: dev_password  # <--- CAMBIA ESTO y guárdalo de forma segura
+      POSTGRES_DB: citas_online_db # <--- CAMBIA ESTO si quieres (ej. nombre_proyecto_db)
+    ports:
+      - "5432:5432" # Mapea el puerto 5432 del contenedor al puerto 5432 de tu máquina
+    volumes:
+      - postgres_citas_data:/var/lib/postgresql/data # Volumen para persistir los datos
+
+volumes:
+  postgres_citas_data: # Define el volumen nombrado
