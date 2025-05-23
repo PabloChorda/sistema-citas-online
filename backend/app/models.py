@@ -5,11 +5,22 @@ from sqlalchemy.sql import func # Para server_default=func.now()
 from sqlalchemy.orm import validates # Para validaciones
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum # Para enums en PostgreSQL
 
-# --- Enums (Opcional, pero bueno para consistencia) ---
-# Si los usas, recuerda gestionar su creación/eliminación en las migraciones
-# class UserRoleEnum(PgEnum): # Ejemplo si usaras un Enum para roles
-#     CLIENT = "client"
-#     PROVIDER = "provider"
+# --- ENUM Definitions (these must be created in the database via Alembic migrations) ---
+# SG: Es buena práctica definir los enums una vez aquí y luego referenciarlos.
+# SG: El nombre que le das al PgEnum (ej. 'dayofweektype_enum') es el nombre que PostgreSQL usará internamente para el tipo.
+# SG: Es importante que este nombre sea único en tu base de datos para todos los tipos ENUM.
+
+day_of_week_enum = PgEnum(
+    'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO',
+    name='dayofweektype_enum', # SG: Nombre para el tipo ENUM en PostgreSQL
+    create_type=False # SG: Le decimos a SQLAlchemy que no intente crear el tipo él mismo; Alembic lo hará.
+)
+
+appointment_status_enum = PgEnum(
+    'PENDING_PROVIDER', 'CONFIRMED', 'CANCELLED_BY_CLIENT', 'CANCELLED_BY_PROVIDER', 'COMPLETED', 'NO_SHOW',
+    name='appointmentstatustype_enum', # SG: Nombre para el tipo ENUM en PostgreSQL
+    create_type=False # SG: Alembic gestionará la creación del tipo.
+)
 
 # --- Modelos ---
 
@@ -18,7 +29,7 @@ class User(db.Model):
 
     user_id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False) # SG: Considerar longitud 256 o más si usas Argon2
     first_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=True)
     phone_number = db.Column(db.String(20), nullable=True)
@@ -26,23 +37,18 @@ class User(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # Relación uno-a-uno (o uno-a-cero) con Provider.
-    # Un User (si es 'provider') tiene un ProviderProfile.
-    # El 'provider_profile' en User permite acceder al Provider.
-    # El backref 'user' en Provider permite acceder desde Provider a su objeto User.
     provider_profile = db.relationship(
         'Provider',
-        backref=db.backref('user', uselist=False, lazy='joined'), # Acceso desde Provider: provider_instance.user
-        uselist=False, # Es una relación uno-a-(cero o uno)
-        cascade="all, delete-orphan" # Si se borra el User, se borra su ProviderProfile
+        backref=db.backref('user', uselist=False, lazy='joined'),
+        uselist=False,
+        cascade="all, delete-orphan"
     )
 
-    # Relación uno-a-muchos: Un cliente (User) puede tener muchas citas.
     client_appointments = db.relationship(
         'Appointment',
-        foreign_keys='Appointment.client_id', # Especifica la FK para esta relación
+        foreign_keys='Appointment.client_id',
         backref=db.backref('client_user', lazy='joined'),
-        lazy='dynamic',
+        lazy='dynamic', # SG: 'dynamic' es bueno si necesitas aplicar más filtros. Si no, 'select' o 'joined' pueden ser más directos.
         cascade="all, delete-orphan"
     )
 
@@ -55,7 +61,7 @@ class User(db.Model):
     def __repr__(self):
         return f'<User ID {self.user_id}: {self.email} ({self.role})>'
 
-    def to_dict(self, include_profile=False):
+    def to_dict(self, include_profile=False): # SG: Buen método
         data = {
             'user_id': self.user_id,
             'email': self.email,
@@ -74,49 +80,41 @@ class User(db.Model):
 class Provider(db.Model):
     __tablename__ = 'providers'
 
-    # provider_id es PK y FK a users.user_id.
     provider_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='CASCADE'), primary_key=True)
-
     business_name = db.Column(db.String(255), nullable=False)
     business_type = db.Column(db.String(100), nullable=True)
     address = db.Column(db.Text, nullable=True)
     bio = db.Column(db.Text, nullable=True)
-    profile_picture_url = db.Column(db.String(255), nullable=True)
-    timezone = db.Column(db.String(50), nullable=False, default='UTC')
+    profile_picture_url = db.Column(db.String(255), nullable=True) # SG: Considerar validación de URL o almacenamiento de archivos
+    timezone = db.Column(db.String(50), nullable=False, default='UTC') # SG: Bueno, asegúrate de usar nombres de timezone válidos (ej. de la lista IANA)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # El atributo 'user' para acceder al User asociado es creado por el backref en User.provider_profile.
-
-    # Relación uno-a-muchos: Un Provider ofrece muchos Services.
     services_offered = db.relationship(
         'Service',
-        backref=db.backref('provider', lazy='joined'), # Acceso desde Service: service_instance.provider
+        backref=db.backref('provider', lazy='joined'),
         lazy='dynamic',
         cascade="all, delete-orphan"
     )
 
-    # Relación uno-a-muchos: Un Provider tiene muchas reglas de disponibilidad.
     availability_rules = db.relationship(
         'AvailabilityRule',
-        backref=db.backref('provider_rule_owner', lazy='joined'), # Nombre único para backref
+        backref=db.backref('provider_rule_owner', lazy='joined'),
         lazy='dynamic',
         cascade="all, delete-orphan"
     )
 
-    # Relación uno-a-muchos: Un Provider tiene muchos bloqueos de tiempo.
     time_blocks = db.relationship(
         'TimeBlock',
-        backref=db.backref('provider_block_owner', lazy='joined'), # Nombre único para backref
+        backref=db.backref('provider_block_owner', lazy='joined'),
         lazy='dynamic',
         cascade="all, delete-orphan"
     )
 
-    # Relación uno-a-muchos: Un proveedor (Provider) tiene muchas citas.
     provider_appointments = db.relationship(
         'Appointment',
-        foreign_keys='Appointment.provider_id', # Especifica la FK para esta relación
-        backref=db.backref('provider_user_profile', lazy='joined'), # Nombre único para backref
+        foreign_keys='Appointment.provider_id',
+        backref=db.backref('provider_user_profile', lazy='joined'),
         lazy='dynamic',
         cascade="all, delete-orphan"
     )
@@ -125,10 +123,10 @@ class Provider(db.Model):
         return f'<Provider ID {self.provider_id}: {self.business_name}>'
 
     def to_dict(self):
-        # El user_id es el mismo que provider_id
-        user_info = self.user.to_dict() if self.user else {} # Obtener info del User asociado
+        user_info = self.user.to_dict() if self.user else {}
         return {
             'provider_id': self.provider_id,
+            'user_id': self.user.user_id if self.user else None, # SG: Podrías añadir el user_id explícitamente
             'email': user_info.get('email'),
             'first_name': user_info.get('first_name'),
             'last_name': user_info.get('last_name'),
@@ -148,24 +146,30 @@ class Service(db.Model):
     __tablename__ = 'services'
 
     id = db.Column(db.Integer, primary_key=True)
-    # provider_id ahora se refiere a Provider.provider_id, que es el mismo que User.user_id
     provider_id = db.Column(db.Integer, db.ForeignKey('providers.provider_id', ondelete='CASCADE'), nullable=False, index=True)
     name = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text, nullable=True)
     duration_minutes = db.Column(db.Integer, nullable=False)
-    price = db.Column(db.Numeric(10, 2), nullable=True) # 10 dígitos en total, 2 después del punto decimal
+    price = db.Column(db.Numeric(10, 2), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # El atributo 'provider' para acceder al Provider es creado por el backref en Provider.services_offered.
-
-    # Relación uno-a-muchos: Un Service puede estar en muchas Appointments.
     appointments_for_service = db.relationship(
         'Appointment',
         backref=db.backref('service_booked', lazy='joined'),
         lazy='dynamic',
-        cascade="all, delete-orphan" # Considera si quieres borrar citas si se borra el servicio
+        # SG: `cascade="all, delete-orphan"` en esta relación significa que si borras un servicio,
+        # se borrarán todas las citas asociadas a ese servicio. Esto puede ser lo deseado
+        # o podrías querer un comportamiento diferente (ej. marcar las citas como 'canceladas_por_sistema'
+        # o simplemente desvincularlas si `service_id` en `Appointment` puede ser `nullable=True` y `ondelete='SET NULL'`).
+        # Tu FK `Appointment.service_id` tiene `ondelete='SET NULL'`, lo cual es inconsistente
+        # con `cascade="all, delete-orphan"` aquí. Debes elegir uno:
+        # Opción 1 (Borrar citas si se borra servicio): `cascade="all, delete-orphan"` en Service y `ondelete='CASCADE'` en Appointment.service_id FK.
+        # Opción 2 (Mantener citas, desvincular servicio): No cascade aquí, y `ondelete='SET NULL'` en Appointment.service_id FK (como ya tienes).
+        # En este caso, la relación no debería tener `cascade="all, delete-orphan"`.
+        # SG: Sugiero Opción 2 por ahora, es menos destructivo:
+        cascade="save-update, merge" # SG: O simplemente quitar el cascade si SET NULL es suficiente.
     )
 
     @validates('duration_minutes')
@@ -173,6 +177,18 @@ class Service(db.Model):
         if not isinstance(duration, int) or duration <= 0:
             raise ValueError("La duración del servicio debe ser un entero positivo.")
         return duration
+    
+    @validates('price')
+    def validate_price(self, key, price): # SG: Buena idea validar el precio también
+        if price is not None:
+            try:
+                price_float = float(price)
+                if price_float < 0:
+                    raise ValueError("El precio no puede ser negativo.")
+            except (ValueError, TypeError):
+                 raise ValueError("El precio debe ser un número válido.")
+        return price
+
 
     def __repr__(self):
         return f'<Service ID {self.id}: {self.name} (Provider ID: {self.provider_id})>'
@@ -184,28 +200,11 @@ class Service(db.Model):
             'name': self.name,
             'description': self.description,
             'duration_minutes': self.duration_minutes,
-            'price': str(self.price) if self.price is not None else None, # Convertir Decimal a string para JSON
+            'price': str(self.price) if self.price is not None else None,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
-
-
-# --- Modelos para Availability y Appointment (como los discutimos) ---
-
-class DayOfWeekType(PgEnum): # Definición del tipo ENUM para PostgreSQL
-    LUNES = "LUNES"
-    MARTES = "MARTES"
-    MIERCOLES = "MIERCOLES"
-    JUEVES = "JUEVES"
-    VIERNES = "VIERNES"
-    SABADO = "SABADO"
-    DOMINGO = "DOMINGO"
-    # Necesitarás crear este tipo en la base de datos con Alembic:
-    # En la migración:
-    # day_of_week_enum = DayOfWeekType(name='dayofweektype', create_type=False)
-    # day_of_week_enum.create(op.get_bind(), checkfirst=True) al migrar hacia arriba
-    # day_of_week_enum.drop(op.get_bind(), checkfirst=True) al migrar hacia abajo
 
 class AvailabilityRule(db.Model):
     __tablename__ = 'availability_rules'
@@ -213,18 +212,30 @@ class AvailabilityRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     provider_id = db.Column(db.Integer, db.ForeignKey('providers.provider_id', ondelete='CASCADE'), nullable=False, index=True)
     
-    # Opción 1: Integer para día de la semana (0=Lunes, ..., 6=Domingo)
-    day_of_week = db.Column(db.Integer, nullable=False)
-    # Opción 2: Usar el tipo ENUM de PostgreSQL (preferible si tu DB lo soporta bien y lo gestionas en migraciones)
-    # day_of_week_enum = db.Column(DayOfWeekType, nullable=False)
+    # SG: Has comentado la opción de ENUM. Si decides usar ENUM (recomendado), descomenta la columna
+    # day_of_week_enum y comenta o elimina la de day_of_week (Integer).
+    # La migración deberá manejar la creación del tipo ENUM como se discutió.
+    #day_of_week = db.Column(db.Integer, nullable=False) # 0=Lunes, ..., 6=Domingo
+    day_of_week = db.Column(day_of_week_enum, nullable=False) # SG: Si usas el ENUM
 
-    start_time = db.Column(db.Time(timezone=False), nullable=False) # Solo la hora, sin zona horaria aquí
-    end_time = db.Column(db.Time(timezone=False), nullable=False)   # La zona horaria la maneja el Provider
+    start_time = db.Column(db.Time(timezone=False), nullable=False)
+    end_time = db.Column(db.Time(timezone=False), nullable=False)
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # El backref 'provider_rule_owner' fue definido en Provider.availability_rules
+    # SG: Añadir una validación para que start_time < end_time
+    @validates('start_time', 'end_time')
+    def validate_time_range(self, key, value):
+        if key == 'start_time':
+            # Si end_time ya está establecido y estamos actualizando start_time
+            if hasattr(self, 'end_time') and self.end_time is not None and value >= self.end_time:
+                raise ValueError("La hora de inicio debe ser anterior a la hora de finalización.")
+        elif key == 'end_time':
+            # Si start_time ya está establecido y estamos actualizando end_time
+            if hasattr(self, 'start_time') and self.start_time is not None and value <= self.start_time:
+                raise ValueError("La hora de finalización debe ser posterior a la hora de inicio.")
+        return value
 
     def __repr__(self):
         return f'<AvailabilityRule for Provider ID {self.provider_id} on day {self.day_of_week} from {self.start_time} to {self.end_time}>'
@@ -233,7 +244,7 @@ class AvailabilityRule(db.Model):
         return {
             'id': self.id,
             'provider_id': self.provider_id,
-            'day_of_week': self.day_of_week, # O self.day_of_week_enum.value si usas el enum
+            'day_of_week': self.day_of_week, # SG: o self.day_of_week.value si es ENUM
             'start_time': self.start_time.strftime('%H:%M:%S'),
             'end_time': self.end_time.strftime('%H:%M:%S'),
             'created_at': self.created_at.isoformat() if self.created_at else None,
@@ -246,15 +257,31 @@ class TimeBlock(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     provider_id = db.Column(db.Integer, db.ForeignKey('providers.provider_id', ondelete='CASCADE'), nullable=False, index=True)
-    start_datetime = db.Column(db.DateTime(timezone=True), nullable=False) # Fecha y hora completas
+    start_datetime = db.Column(db.DateTime(timezone=True), nullable=False)
     end_datetime = db.Column(db.DateTime(timezone=True), nullable=False)
-    reason = db.Column(db.String(255), nullable=True)
+    # SG: Podrías añadir un campo 'is_available' (Boolean) para indicar si este bloque
+    # representa tiempo disponible adicional o tiempo no disponible (una excepción).
+    # Por ejemplo, is_available=False para vacaciones, is_available=True para horas extra un sábado.
+    # Si no, el 'reason' podría implicarlo, o asumes que todos los TimeBlock son "no disponible".
+    is_available = db.Column(db.Boolean, nullable=False, default=False) # SG: Ejemplo, default a "no disponible"
+    reason = db.Column(db.String(255), nullable=True) # SG: Razón de la no disponibilidad o disponibilidad extra
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    # El backref 'provider_block_owner' fue definido en Provider.time_blocks
+    
+    # SG: Añadir validación para que start_datetime < end_datetime
+    @validates('start_datetime', 'end_datetime')
+    def validate_datetime_range(self, key, value):
+        if key == 'start_datetime':
+            if hasattr(self, 'end_datetime') and self.end_datetime is not None and value >= self.end_datetime:
+                raise ValueError("La fecha/hora de inicio debe ser anterior a la fecha/hora de finalización.")
+        elif key == 'end_datetime':
+            if hasattr(self, 'start_datetime') and self.start_datetime is not None and value <= self.start_datetime:
+                raise ValueError("La fecha/hora de finalización debe ser posterior a la fecha/hora de inicio.")
+        return value
 
     def __repr__(self):
-        return f'<TimeBlock for Provider ID {self.provider_id} from {self.start_datetime} to {self.end_datetime}>'
+        availability_status = "available" if self.is_available else "unavailable"
+        return f'<TimeBlock for Provider ID {self.provider_id} from {self.start_datetime} to {self.end_datetime} ({availability_status})>'
 
     def to_dict(self):
         return {
@@ -262,38 +289,30 @@ class TimeBlock(db.Model):
             'provider_id': self.provider_id,
             'start_datetime': self.start_datetime.isoformat(),
             'end_datetime': self.end_datetime.isoformat(),
+            'is_available': self.is_available, # SG: Añadido
             'reason': self.reason,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
-
-
-class AppointmentStatusType(PgEnum): # Definición del tipo ENUM para PostgreSQL
-    PENDING_PROVIDER = "PENDING_PROVIDER"
-    CONFIRMED = "CONFIRMED"
-    CANCELLED_BY_CLIENT = "CANCELLED_BY_CLIENT"
-    CANCELLED_BY_PROVIDER = "CANCELLED_BY_PROVIDER"
-    COMPLETED = "COMPLETED"
-    NO_SHOW = "NO_SHOW"
-    # Necesitarás crear este tipo en la base de datos con Alembic:
-    # appointment_status_enum = AppointmentStatusType(name='appointmentstatustype', create_type=False)
-    # appointment_status_enum.create(op.get_bind(), checkfirst=True)
-    # appointment_status_enum.drop(op.get_bind(), checkfirst=True)
 
 class Appointment(db.Model):
     __tablename__ = 'appointments'
 
     id = db.Column(db.Integer, primary_key=True)
-    client_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='SET NULL'), nullable=True, index=True) # Un cliente podría borrar su cuenta
+    client_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='SET NULL'), nullable=True, index=True)
     provider_id = db.Column(db.Integer, db.ForeignKey('providers.provider_id', ondelete='CASCADE'), nullable=False, index=True)
-    service_id = db.Column(db.Integer, db.ForeignKey('services.id', ondelete='SET NULL'), nullable=True, index=True) # Un servicio podría ser borrado
+    service_id = db.Column(db.Integer, db.ForeignKey('services.id', ondelete='SET NULL'), nullable=True, index=True)
 
     start_datetime = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
     end_datetime = db.Column(db.DateTime(timezone=True), nullable=False)
 
     status = db.Column(
-        AppointmentStatusType, # Usa el tipo ENUM definido arriba
+        appointment_status_enum, # SG: Usando el ENUM definido arriba
         nullable=False,
-        default=AppointmentStatusType.CONFIRMED, # O PENDING_PROVIDER si necesitas confirmación
+        default='CONFIRMED', # SG: Accediendo al valor 'CONFIRMED' del enum
+                                                        # O directamente: default='CONFIRMED' si el ENUM ya está registrado
+                                                        # o default=AppointmentStatusType.CONFIRMED si AppointmentStatusType es tu clase Python
+                                                        # Para PgEnum, es mejor usar el string o el índice si sabes que no cambiará.
+                                                        # default='CONFIRMED' es lo más seguro si el tipo ya está en la DB.
         index=True
     )
     notes_client = db.Column(db.Text, nullable=True)
@@ -301,11 +320,23 @@ class Appointment(db.Model):
 
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    # Los backrefs 'client_user', 'provider_user_profile', 'service_booked' ya están definidos en los otros modelos.
+    
+    # SG: Añadir validación para que start_datetime < end_datetime
+    @validates('start_datetime', 'end_datetime')
+    def validate_datetime_range(self, key, value): # SG: Reutilicé el nombre, está bien
+        if key == 'start_datetime':
+            if hasattr(self, 'end_datetime') and self.end_datetime is not None and value >= self.end_datetime:
+                raise ValueError("La fecha/hora de inicio de la cita debe ser anterior a la fecha/hora de finalización.")
+        elif key == 'end_datetime':
+            if hasattr(self, 'start_datetime') and self.start_datetime is not None and value <= self.start_datetime:
+                raise ValueError("La fecha/hora de finalización de la cita debe ser posterior a la fecha/hora de inicio.")
+        return value
 
     def __repr__(self):
-        return f'<Appointment ID {self.id} for Service ID {self.service_id} at {self.start_datetime} ({self.status.value})>'
+        # SG: .value puede no ser necesario si el objeto enum ya se castea a string bien.
+        # SG: Pero ser explícito con .value es más seguro para el __repr__.
+        status_val = self.status.value if hasattr(self.status, 'value') else self.status
+        return f'<Appointment ID {self.id} for Service ID {self.service_id} at {self.start_datetime} ({status_val})>'
 
     def to_dict(self):
         return {
@@ -315,12 +346,9 @@ class Appointment(db.Model):
             'service_id': self.service_id,
             'start_datetime': self.start_datetime.isoformat(),
             'end_datetime': self.end_datetime.isoformat(),
-            'status': self.status.value, # Obtener el valor string del Enum
+            'status': self.status.value if hasattr(self.status, 'value') else self.status, # SG: Usar .value para el string
             'notes_client': self.notes_client,
             'notes_provider': self.notes_provider,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            # Podrías añadir información del cliente, proveedor o servicio si usas lazy='joined'
-            # 'client_email': self.client_user.email if self.client_user else None,
-            # 'service_name': self.service_booked.name if self.service_booked else None,
         }

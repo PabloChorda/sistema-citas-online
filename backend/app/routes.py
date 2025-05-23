@@ -404,4 +404,37 @@ def get_availability_rules():
     return jsonify([rule.to_dict() for rule in rules]), 200
 
 # --- Aquí añadirías PUT y DELETE para /availability-rules/{rule_id} ---
+
+# Añadir esto en routes.py, después de get_availability_rules
+
+@bp_api.route('/availability-rules/<int:rule_id>', methods=['DELETE'])
+@jwt_required()
+def delete_availability_rule(rule_id):
+    current_user_id_str = get_jwt_identity()
+    try:
+        current_user_id_int = int(current_user_id_str)
+    except ValueError:
+        return jsonify({"msg": "Identidad del token inválida"}), 422
+        
+    user = User.query.get(current_user_id_int)
+    if not user or user.role != 'provider':
+        return jsonify({"msg": "Acceso denegado o usuario no es proveedor"}), 403
+    if not user.provider_profile:
+        return jsonify({"msg": "Perfil de proveedor no encontrado"}), 404
+
+    rule = AvailabilityRule.query.get(rule_id)
+    if not rule:
+        return jsonify({"msg": "Regla de disponibilidad no encontrada para eliminar"}), 404
+    if rule.provider_id != user.provider_profile.provider_id:
+        return jsonify({"msg": "Acceso denegado: no puede eliminar una regla que no le pertenece"}), 403
+
+    try:
+        db.session.delete(rule)
+        db.session.commit()
+        return jsonify({"msg": "Regla de disponibilidad eliminada exitosamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error al eliminar regla de disponibilidad: {e}\nTraceback: {e.__traceback__}")
+        return jsonify({"msg": "Error interno al eliminar la regla de disponibilidad", "error_details": str(e)}), 500
+
 # --- Y luego los endpoints para TimeBlock y Appointment ---
