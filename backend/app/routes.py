@@ -15,6 +15,48 @@ bp_api = Blueprint('api', __name__)
 VALID_DAYS_OF_WEEK = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO']
 
 
+
+# --- INICIO DE LA FUNCIÓN HELPER ---
+def merge_overlapping_intervals(intervals):
+    """
+    Fusiona una lista de intervalos de tiempo que pueden estar solapados o ser adyacentes.
+    Cada intervalo es un diccionario {'start': datetime_utc, 'end': datetime_utc}.
+    Devuelve una nueva lista de intervalos no solapados, ordenados por inicio.
+    """
+    if not intervals:
+        return []
+
+    # Ordenar los intervalos por su tiempo de inicio
+    intervals.sort(key=lambda x: x['start'])
+
+    merged = []
+    if not intervals: # Doble check por si la lista original estaba vacía
+        return merged
+
+    current_start = intervals[0]['start']
+    current_end = intervals[0]['end']
+
+    for i in range(1, len(intervals)):
+        next_start = intervals[i]['start']
+        next_end = intervals[i]['end']
+
+        # Si el siguiente intervalo se solapa o es adyacente al actual
+        if next_start <= current_end: 
+            # Fusionar extendiendo el final del intervalo actual si es necesario
+            current_end = max(current_end, next_end)
+        else:
+            # No hay solapamiento, guardar el intervalo actual fusionado
+            merged.append({'start': current_start, 'end': current_end})
+            # Empezar un nuevo intervalo actual
+            current_start = next_start
+            current_end = next_end
+    
+    # Añadir el último intervalo actual fusionado
+    merged.append({'start': current_start, 'end': current_end})
+    
+    return merged
+# --- FIN DE LA FUNCIÓN HELPER ---
+
 # --- Ruta de prueba ---
 @bp_api.route('/test-db', methods=['GET']) 
 def api_test_db():
@@ -836,9 +878,6 @@ def update_time_block(block_id):
 # --- Siguiente: Endpoint "mágico" de disponibilidad y luego Appointments ---   
 
 @bp_api.route('/providers/<int:provider_id>/available-slots', methods=['GET'])
-# SG: Este endpoint es para clientes, ¿debería requerir autenticación de cliente?
-# Por ahora lo dejaremos abierto, pero es algo a considerar.
-# Si se requiere autenticación de cliente, añadir @jwt_required() y obtener el cliente.
 def get_available_slots(provider_id):
     current_app.logger.info(f"Solicitando slots disponibles para Provider ID: {provider_id}")
 
@@ -862,14 +901,234 @@ def get_available_slots(provider_id):
     except ValueError:
         return jsonify({"msg": "Formato de fecha inválido para start_date o end_date. Usar YYYY-MM-DD"}), 400
 
-    if start_date_obj < date.today(): # SG: No permitir buscar slots en el pasado
+    if start_date_obj < date.today():
          return jsonify({"msg": "La fecha de inicio (start_date) no puede ser en el pasado."}), 400
     if start_date_obj > end_date_obj:
         return jsonify({"msg": "start_date no puede ser posterior a end_date"}), 400
     
-    # SG: Limitar el rango de búsqueda para evitar consultas muy largas (ej. max 30-60 días)
-    if (end_date_obj - start_date_obj).days > 60: # Ejemplo: máximo 60 días de rango
+    if (end_date_obj - start_date_obj).days > 60: 
         return jsonify({"msg": "El rango de fechas solicitado es demasiado amplio (máximo 60 días)."}), 400
+
+@bp_api.route('/appointments', methods=['POST'])
+@jwt_required()
+def create_appointment():
+    current_user_id_str = get_jwt_identity()
+    try:
+        current_user_id = int(current_user_id_str)
+    except ValueError:
+        current_app.logger.error(f"POST /appointments: User ID del token ('{current_user_id_str}') no es un entero válido.")
+        return jsonify({"msg": "Token inválido: User ID incorrecto"}), 422
+
+    client = User.query.get(current_user_id)
+
+    if not client:
+        current_app.logger.warning(f"POST /appointments: Cliente con User ID {current_user_id} (del token) no encontrado.")
+        return jsonify({"msg": "Usuario cliente no encontrado"}), 404
+    
+    if client.role != 'client':
+        current_app.logger.warning(f"POST /appointments: Usuario {client.email} (ID: {client.user_id}) intentó reservar pero no es un cliente (rol: {client.role}).")
+        return jsonify({"msg": "Acceso denegado: Solo los clientes pueden reservar citas"}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"msg": "No se enviaron datos en la petición"}), 400
+
+    # Validar y parsear los datos de entrada
+    provider_id_from_request = data.get('provider_id')
+    service_id_from_request = data.get('service_id')
+    slot_start_utc_str = data.get('slot_start_utc')
+    notes_client = data.get('notes_client') # Opcional
+
+    if not provider_id_from_request or not service_id_from_request or not slot_start_utc_str:
+        return jsonify({"msg": "Faltan datos requeridos: provider_id, service_id, slot_start_utc"}), 400
+
+    try:
+        provider_id = int(provider_id_from_request)
+        service_id = int(service_id_from_request)
+    except ValueError:
+        return jsonify({"msg": "provider_id y service_id deben ser enteros válidos"}), 400
+
+    try:
+        # Convertir el string UTC a un objeto datetime aware (consciente de zona horaria)
+        # datetime.fromisoformat maneja bien los strings con '+00:00' o 'Z'
+        slot_start_datetime_obj_utc = datetime.fromisoformat(slot_start_utc_str)
+        # Asegurarnos de que es UTC si no tiene offset, o convertirlo si lo tiene
+        if slot_start_datetime_obj_utc.tzinfo is None:
+            # Si por alguna razón llega sin tzinfo (aunque fromisoformat debería manejarlo si el string es correcto)
+            # Lo ideal sería rechazarlo o asumir UTC explícitamente. Rechazar es más seguro.
+            current_app.logger.warning(f"POST /appointments: slot_start_utc ('{slot_start_utc_str}') no tiene información de zona horaria.")
+            return jsonify({"msg": "slot_start_utc debe ser un string ISO 8601 con información de zona horaria UTC (ej. 'Z' o '+00:00')"}), 400
+        elif slot_start_datetime_obj_utc.tzinfo != timezone.utc:
+            # Si tiene una zona horaria diferente a UTC, la convertimos a UTC
+            slot_start_datetime_obj_utc = slot_start_datetime_obj_utc.astimezone(timezone.utc)
+            current_app.logger.info(f"POST /appointments: slot_start_utc convertido a UTC: {slot_start_datetime_obj_utc.isoformat()}")
+
+    except ValueError:
+        current_app.logger.warning(f"POST /appointments: Formato de slot_start_utc ('{slot_start_utc_str}') inválido.")
+        return jsonify({"msg": "Formato de slot_start_utc inválido. Usar ISO 8601 UTC (ej. YYYY-MM-DDTHH:MM:SSZ o YYYY-MM-DDTHH:MM:SS+00:00)"}), 400
+
+    # Obtener Provider y Service
+    provider = Provider.query.get(provider_id)
+    if not provider:
+        current_app.logger.warning(f"POST /appointments: Proveedor con ID {provider_id} no encontrado.")
+        return jsonify({"msg": "Proveedor no encontrado"}), 404
+
+    service = Service.query.filter_by(id=service_id, provider_id=provider.id).first() # Buscamos el servicio para ese proveedor
+    if not service:
+        current_app.logger.warning(f"POST /appointments: Servicio con ID {service_id} no encontrado para el Proveedor ID {provider.id}.")
+        return jsonify({"msg": f"Servicio no encontrado para el proveedor especificado"}), 404
+    if not service.is_active:
+        current_app.logger.warning(f"POST /appointments: Servicio con ID {service_id} (Proveedor ID {provider.id}) no está activo.")
+        return jsonify({"msg": "El servicio seleccionado no está activo"}), 400
+
+    # Calcular hora de finalización de la cita
+    appointment_duration = timedelta(minutes=service.duration_minutes)
+    appointment_end_datetime_obj_utc = slot_start_datetime_obj_utc + appointment_duration
+    
+    current_app.logger.info(f"POST /appointments: Intento de reserva para Cliente ID {client.user_id}, Proveedor ID {provider.id}, Servicio ID {service.id}, Slot UTC: {slot_start_datetime_obj_utc.isoformat()} a {appointment_end_datetime_obj_utc.isoformat()}")
+
+    # --- INICIO DE VERIFICACIÓN DE DISPONIBILIDAD DEL SLOT ---
+    current_app.logger.info(f"POST /appointments: Verificando disponibilidad del slot para Proveedor ID {provider.id}...")
+
+    # 1.a Obtener zona horaria del proveedor
+    provider_tz_str = provider.timezone
+    provider_tz = None
+    # (Reutilizamos la lógica de obtención de tzinfo que teníamos en get_available_slots)
+    try:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+        try:
+            provider_tz = ZoneInfo(provider_tz_str)
+        except ZoneInfoNotFoundError:
+            provider_tz = None
+        except Exception: provider_tz = None
+    except ImportError: provider_tz = None
+
+    if provider_tz is None:
+        try:
+            import pytz
+            provider_tz = pytz.timezone(provider_tz_str)
+        except ImportError:
+            if provider_tz_str.upper() == 'UTC': provider_tz = timezone.utc
+            else:
+                current_app.logger.error(f"POST /appointments: Error crítico al obtener tz para proveedor {provider.id} sin pytz/zoneinfo.")
+                return jsonify({"msg": "Error de configuración del servidor al procesar la disponibilidad."}), 500
+        except pytz.UnknownTimeZoneError:
+            current_app.logger.error(f"POST /appointments: Zona horaria desconocida '{provider_tz_str}' para proveedor {provider.id}.")
+            return jsonify({"msg": "Error en la zona horaria del proveedor."}), 500
+        except Exception as e_pytz:
+            current_app.logger.error(f"POST /appointments: Error inesperado con pytz para '{provider_tz_str}': {e_pytz}")
+            return jsonify({"msg": "Error al procesar la zona horaria del proveedor."}), 500
+
+    # 1.b Determinar fecha y día de la semana del slot en la TZ del proveedor
+    slot_start_local_provider_tz = slot_start_datetime_obj_utc.astimezone(provider_tz)
+    slot_date_local = slot_start_local_provider_tz.date()
+    
+    python_weekday_to_enum_str = { 0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
+    day_of_week_enum_value = python_weekday_to_enum_str.get(slot_date_local.weekday())
+
+    if not day_of_week_enum_value: # No debería pasar si slot_date_local es válida
+        current_app.logger.error(f"POST /appointments: No se pudo determinar el día de la semana para {slot_date_local}")
+        return jsonify({"msg": "Error procesando la fecha del slot."}), 500
+
+    # 1.c & 1.d: Obtener AvailabilityRules y convertirlas a UTC para la fecha del slot
+    base_availability_intervals_utc = []
+    rules_for_day = AvailabilityRule.query.filter_by(
+        provider_id=provider.id,
+        day_of_week=day_of_week_enum_value
+    ).all()
+
+    current_app.logger.debug(f"POST /appointments: {len(rules_for_day)} reglas de disponibilidad encontradas para {day_of_week_enum_value} el {slot_date_local}.")
+    for rule in rules_for_day:
+        start_dt_naive = datetime.combine(slot_date_local, rule.start_time)
+        end_dt_naive = datetime.combine(slot_date_local, rule.end_time)
+        # Hacerlos "aware" usando la zona horaria del proveedor
+        start_dt_aware_provider = provider_tz.localize(start_dt_naive) if hasattr(provider_tz, 'localize') else start_dt_naive.replace(tzinfo=provider_tz)
+        end_dt_aware_provider = provider_tz.localize(end_dt_naive) if hasattr(provider_tz, 'localize') else end_dt_naive.replace(tzinfo=provider_tz)
+        # Convertir a UTC
+        base_availability_intervals_utc.append({
+            'start': start_dt_aware_provider.astimezone(timezone.utc),
+            'end': end_dt_aware_provider.astimezone(timezone.utc)
+        })
+    
+    if not base_availability_intervals_utc: # Si no hay reglas para ese día
+        current_app.logger.info(f"POST /appointments: No hay reglas de disponibilidad base para el proveedor {provider.id} en {day_of_week_enum_value} ({slot_date_local}). Slot no disponible.")
+        return jsonify({"msg": "El proveedor no está disponible en la fecha solicitada."}), 409 # 409 Conflict
+
+    # 1.e & 1.f: Aplicar TimeBlocks
+    # Definir el inicio y fin del día del slot en UTC para filtrar TimeBlocks
+    day_start_utc = slot_start_datetime_obj_utc.replace(hour=0, minute=0, second=0, microsecond=0) # Inicio del día UTC del slot
+    day_end_utc = day_start_utc + timedelta(days=1) # Fin del día UTC del slot (inicio del siguiente)
+
+    time_blocks_for_slot_day = TimeBlock.query.filter(
+        TimeBlock.provider_id == provider.id,
+        TimeBlock.start_datetime < day_end_utc, # TimeBlock comienza antes de que termine el día del slot
+        TimeBlock.end_datetime > day_start_utc   # TimeBlock termina después de que comience el día del slot
+    ).all()
+    
+    current_app.logger.debug(f"POST /appointments: {len(time_blocks_for_slot_day)} TimeBlocks encontrados que se solapan con el día del slot.")
+    
+    # Aplicar lógica de TimeBlocks (reutilizando la estructura de get_available_slots)
+    processed_intervals_utc = list(base_availability_intervals_utc)
+
+    # Restar TimeBlocks con is_available=False
+    for tb in time_blocks_for_slot_day:
+        if not tb.is_available:
+            tb_start_utc = tb.start_datetime.astimezone(timezone.utc)
+            tb_end_utc = tb.end_datetime.astimezone(timezone.utc)
+            next_processed_intervals = []
+            for interval in processed_intervals_utc:
+                if tb_end_utc <= interval['start'] or tb_start_utc >= interval['end']: next_processed_intervals.append(interval); continue
+                if tb_start_utc <= interval['start'] < tb_end_utc < interval['end']:
+                    if tb_end_utc < interval['end']: next_processed_intervals.append({'start': tb_end_utc, 'end': interval['end']})
+                elif interval['start'] < tb_start_utc < interval['end'] <= tb_end_utc:
+                    if interval['start'] < tb_start_utc: next_processed_intervals.append({'start': interval['start'], 'end': tb_start_utc})
+                elif interval['start'] < tb_start_utc and tb_end_utc < interval['end']:
+                    if interval['start'] < tb_start_utc: next_processed_intervals.append({'start': interval['start'], 'end': tb_start_utc})
+                    if tb_end_utc < interval['end']: next_processed_intervals.append({'start': tb_end_utc, 'end': interval['end']})
+                elif tb_start_utc <= interval['start'] and tb_end_utc >= interval['end']: pass
+            processed_intervals_utc = next_processed_intervals
+            
+    # Añadir TimeBlocks con is_available=True y fusionar
+    extra_availability_utc = []
+    for tb in time_blocks_for_slot_day:
+        if tb.is_available:
+            tb_start_utc = tb.start_datetime.astimezone(timezone.utc)
+            tb_end_utc = tb.end_datetime.astimezone(timezone.utc)
+            # Recortar al día del slot para evitar añadir disponibilidad de otros días (importante si el TimeBlock abarca varios días)
+            effective_start = max(tb_start_utc, day_start_utc)
+            effective_end = min(tb_end_utc, day_end_utc)
+            if effective_start < effective_end:
+                extra_availability_utc.append({'start': effective_start, 'end': effective_end})
+
+    combined_intervals_utc = processed_intervals_utc + extra_availability_utc
+    
+    # Necesitamos la función merge_overlapping_intervals aquí.
+    # Si no está definida globalmente en routes.py, necesitarás copiarla o importarla.
+    # Asumo que la tienes definida en el mismo archivo (routes.py) como 'merge_overlapping_intervals'
+    net_working_periods_utc = merge_overlapping_intervals(combined_intervals_utc) 
+    
+    current_app.logger.debug(f"POST /appointments: Periodos de trabajo netos para el día del slot: {net_working_periods_utc}")
+
+    # 1.g: Verificar si el slot solicitado está contenido en los periodos de trabajo netos
+    slot_is_within_general_availability = False
+    for period in net_working_periods_utc:
+        if period['start'] <= slot_start_datetime_obj_utc and period['end'] >= appointment_end_datetime_obj_utc:
+            slot_is_within_general_availability = True
+            break
+            
+    if not slot_is_within_general_availability:
+        current_app.logger.info(f"POST /appointments: El slot solicitado {slot_start_datetime_obj_utc.isoformat()} - {appointment_end_datetime_obj_utc.isoformat()} no está dentro de la disponibilidad general del proveedor.")
+        return jsonify({"msg": "El slot de tiempo solicitado no está disponible (conflicto con disponibilidad general)."}), 409 # Conflict
+
+    current_app.logger.info(f"POST /appointments: Slot {slot_start_datetime_obj_utc.isoformat()} está DENTRO de la disponibilidad general. Procediendo a verificar citas existentes.")
+    # --- FIN DE VERIFICACIÓN DE DISPONIBILIDAD GENERAL ---
+
+    # TODO: Punto 2: Verificar conflicto con Otras Citas existentes
+    # TODO: Crear y guardar la cita
+    # TODO: Devolver respuesta
+
+    return jsonify({"msg": "Endpoint create_appointment en desarrollo - Verificación de disponibilidad general completada"}), 501
+
 
 
     # 3. Obtener Proveedor y Servicio
@@ -884,71 +1143,52 @@ def get_available_slots(provider_id):
         return jsonify({"msg": f"El servicio con ID {service_id} no está activo actualmente"}), 400
 
     service_duration = timedelta(minutes=service.duration_minutes)
-    provider_timezone_str = provider.timezone # Ej. "Europe/Madrid", "America/New_York", o "UTC"
-
-    service_duration = timedelta(minutes=service.duration_minutes)
-
     provider_timezone_str = provider.timezone
-    provider_tz = None # Inicializar la variable para el objeto tzinfo
+    provider_tz = None 
 
-    if not provider_timezone_str: # SG: Si el proveedor no tiene timezone configurada
+    if not provider_timezone_str: 
         current_app.logger.error(f"El proveedor {provider_id} no tiene una zona horaria configurada.")
         return jsonify({"msg": "La zona horaria del proveedor no está configurada."}), 500
 
     try:
-        # Intentar con zoneinfo (Python 3.9+) - Preferido
         from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
         try:
             provider_tz = ZoneInfo(provider_timezone_str)
             current_app.logger.info(f"Zona horaria obtenida para {provider_timezone_str} usando zoneinfo.")
         except ZoneInfoNotFoundError:
-            current_app.logger.warning(f"ZoneInfo no pudo encontrar la zona horaria: '{provider_timezone_str}'. Intentando con pytz si está disponible.")
-            provider_tz = None # Marcar para intentar con pytz
-        except Exception as e_zi: # Capturar otros posibles errores de ZoneInfo
+            current_app.logger.warning(f"ZoneInfo no pudo encontrar la zona horaria: '{provider_timezone_str}'. Intentando con pytz.")
+            provider_tz = None
+        except Exception as e_zi:
             current_app.logger.error(f"Error inesperado con ZoneInfo para '{provider_timezone_str}': {e_zi}")
             provider_tz = None
-
-    except ImportError: # zoneinfo no disponible (Python < 3.9)
+    except ImportError:
         current_app.logger.info("Módulo zoneinfo no disponible, intentando con pytz.")
-        provider_tz = None # Marcar para intentar con pytz
+        provider_tz = None
 
-    if provider_tz is None: # Si zoneinfo falló o no estaba disponible, intentar con pytz
+    if provider_tz is None:
         try:
-            import pytz # Asegúrate de tener pytz instalado: pip install pytz
+            import pytz
             provider_tz = pytz.timezone(provider_timezone_str)
             current_app.logger.info(f"Zona horaria obtenida para {provider_timezone_str} usando pytz.")
         except ImportError:
-            current_app.logger.error("Librería pytz no instalada y zoneinfo no disponible. Se necesita una para el manejo de zonas horarias IANA.")
-            # Como último recurso MUY BÁSICO, si la string es "UTC"
+            current_app.logger.error("Librería pytz no instalada y zoneinfo no disponible.")
             if provider_timezone_str.upper() == 'UTC':
                 provider_tz = timezone.utc
-                current_app.logger.warning("Usando datetime.timezone.utc como fallback para 'UTC' debido a falta de librerías completas.")
+                current_app.logger.warning("Usando datetime.timezone.utc como fallback para 'UTC'.")
             else:
-                # No podemos manejar zonas IANA sin una librería adecuada.
-                return jsonify({"msg": "Error de configuración del servidor: no se puede procesar la zona horaria del proveedor."}), 500
+                return jsonify({"msg": "Error de configuración: no se puede procesar la zona horaria del proveedor."}), 500
         except pytz.UnknownTimeZoneError:
-            current_app.logger.error(f"Zona horaria desconocida '{provider_timezone_str}' para el proveedor {provider_id} usando pytz.")
-            # Podrías decidir usar UTC como fallback con una advertencia, o fallar. Fallar es más seguro.
-            return jsonify({"msg": f"La zona horaria '{provider_timezone_str}' del proveedor es inválida o no reconocida."}), 500
-        except Exception as e_pytz: # Capturar otros posibles errores de pytz
+            current_app.logger.error(f"Zona horaria desconocida '{provider_timezone_str}' con pytz.")
+            return jsonify({"msg": f"La zona horaria '{provider_timezone_str}' del proveedor es inválida."}), 500
+        except Exception as e_pytz:
             current_app.logger.error(f"Error inesperado con pytz para '{provider_timezone_str}': {e_pytz}")
             return jsonify({"msg": "Error al procesar la zona horaria del proveedor."}), 500
     
-    # A este punto, provider_tz debería ser un objeto tzinfo válido o la función ya habría retornado un error.
     current_app.logger.info(f"Proveedor: {provider.business_name} (ID: {provider.provider_id}), Servicio: {service.name} (ID: {service.id}), Duración: {service_duration}, Timezone Proveedor (str): {provider_timezone_str}, Timezone Proveedor (obj resultante): {provider_tz}")
 
-    # 4. Obtener Reglas de Disponibilidad, Bloqueos y Citas Existentes
-    #    (Dentro del rango de fechas solicitado, ajustado para la zona horaria del proveedor)
-
-    # TODO: Lógica para convertir start_date_obj y end_date_obj a datetimes en la zona horaria del proveedor
-    #       para filtrar AvailabilityRule, TimeBlock y Appointment correctamente.
-
-
-    all_available_slots = [] 
-    current_date_iter = start_date_obj # Renombrar para evitar confusión con la variable del bucle
+    all_available_slots_info = [] # Renombrado para evitar confusión con la salida final de slots
+    current_date_iter = start_date_obj
     
-    # Mapeo de Python weekday() (Lunes=0 a Domingo=6) a los strings de tu ENUM
-    # Asegúrate que estos strings coincidan EXACTAMENTE con tu ENUM
     python_weekday_to_enum_str = {
         0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 
         4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'
@@ -960,155 +1200,147 @@ def get_available_slots(provider_id):
         
         current_app.logger.debug(f"Procesando día: {current_date_iter}, DOW_int: {day_of_week_int}, DOW_enum: {day_of_week_enum_value}")
 
-        # A. Obtener bloques base de AvailabilityRule para current_date_iter
         base_availability_intervals_for_day = []
-        if day_of_week_enum_value: # Si el día es válido en nuestro mapeo
-            # Filtrar reglas por provider_id Y el valor string del enum del día de la semana
+        if day_of_week_enum_value:
             rules_for_day = AvailabilityRule.query.filter_by(
                 provider_id=provider.provider_id,
-                day_of_week=day_of_week_enum_value # Aquí se usa el valor string del ENUM
+                day_of_week=day_of_week_enum_value
             ).all()
-
             current_app.logger.debug(f"Día {current_date_iter} ({day_of_week_enum_value}): {len(rules_for_day)} reglas encontradas.")
-
             for rule in rules_for_day:
-                # Combinar la fecha actual con la hora de inicio/fin de la regla
-                # y hacerlo "aware" con la zona horaria del proveedor
                 start_dt_naive = datetime.combine(current_date_iter, rule.start_time)
                 end_dt_naive = datetime.combine(current_date_iter, rule.end_time)
-                
-                # Hacerlos "aware" usando la zona horaria del proveedor
                 start_dt_aware = provider_tz.localize(start_dt_naive) if hasattr(provider_tz, 'localize') else start_dt_naive.replace(tzinfo=provider_tz)
                 end_dt_aware = provider_tz.localize(end_dt_naive) if hasattr(provider_tz, 'localize') else end_dt_naive.replace(tzinfo=provider_tz)
-                
-                # SG: Es buena práctica convertir todo a UTC para cálculos internos y comparaciones
                 start_dt_utc = start_dt_aware.astimezone(timezone.utc)
                 end_dt_utc = end_dt_aware.astimezone(timezone.utc)
-                
                 base_availability_intervals_for_day.append({'start': start_dt_utc, 'end': end_dt_utc})
-                current_app.logger.debug(f"  Regla ID {rule.id}: {rule.start_time}-{rule.end_time} (Local TZ) -> UTC: {start_dt_utc} - {end_dt_utc}")
+                current_app.logger.debug(f"  Regla ID {rule.id}: {rule.start_time}-{rule.end_time} (Local TZ) -> UTC: {start_dt_utc.isoformat()} - {end_dt_utc.isoformat()}")
         
-        # B. Aplicar TimeBlocks (excepciones) para current_date_iter
-        # Primero, obtenemos los TimeBlocks relevantes para el día actual del proveedor
-        # Un TimeBlock es relevante si su rango se solapa con el día actual.
-        # current_date_iter es un objeto date. Necesitamos rangos datetime para el día.
-        
-        # Inicio del día actual en la zona horaria del proveedor
         day_start_naive = datetime.combine(current_date_iter, datetime.min.time())
         day_start_aware_provider_tz = provider_tz.localize(day_start_naive) if hasattr(provider_tz, 'localize') else day_start_naive.replace(tzinfo=provider_tz)
         day_start_utc = day_start_aware_provider_tz.astimezone(timezone.utc)
-
-        # Fin del día actual (inicio del día siguiente) en la zona horaria del proveedor
         day_end_naive = datetime.combine(current_date_iter + timedelta(days=1), datetime.min.time())
         day_end_aware_provider_tz = provider_tz.localize(day_end_naive) if hasattr(provider_tz, 'localize') else day_end_naive.replace(tzinfo=provider_tz)
         day_end_utc = day_end_aware_provider_tz.astimezone(timezone.utc)
 
-        # Obtener TimeBlocks que se solapan con el día actual
-        # Un TimeBlock (tb_start, tb_end) se solapa con el día (day_start_utc, day_end_utc) si:
-        # tb_start < day_end_utc AND tb_end > day_start_utc
         provider_time_blocks_for_day = TimeBlock.query.filter(
             TimeBlock.provider_id == provider.provider_id,
-            TimeBlock.start_datetime < day_end_utc, # El bloqueo comienza antes de que termine el día
-            TimeBlock.end_datetime > day_start_utc  # El bloqueo termina después de que comience el día
+            TimeBlock.start_datetime < day_end_utc,
+            TimeBlock.end_datetime > day_start_utc
         ).all()
-
         current_app.logger.debug(f"  Día {current_date_iter}: {len(provider_time_blocks_for_day)} TimeBlocks encontrados que se solapan con el día.")
 
-        # Inicializar los intervalos procesados con los intervalos base
-        processed_intervals_for_day = list(base_availability_intervals_for_day) # Copiar la lista
+        processed_intervals_for_day = list(base_availability_intervals_for_day)
 
-        # Aplicar TimeBlocks que son is_available=False (bloqueos)
         for tb in provider_time_blocks_for_day:
-            if not tb.is_available: # Es un bloqueo de "no disponible"
-                current_app.logger.debug(f"    Aplicando TimeBlock de NO disponibilidad ID {tb.id}: {tb.start_datetime} - {tb.end_datetime}")
+            if not tb.is_available:
+                tb_start_utc = tb.start_datetime.astimezone(timezone.utc) # Asegurar UTC
+                tb_end_utc = tb.end_datetime.astimezone(timezone.utc)     # Asegurar UTC
+                current_app.logger.debug(f"    Aplicando TimeBlock de NO disponibilidad ID {tb.id}: UTC {tb_start_utc.isoformat()} - {tb_end_utc.isoformat()}")
                 
-                # Necesitamos restar este tb (que ya está en UTC si se guardó correctamente)
-                # de cada intervalo en processed_intervals_for_day
-                tb_start_utc = tb.start_datetime # Asumiendo que ya está en UTC o con tzinfo correcto
-                tb_end_utc = tb.end_datetime   # Asumiendo que ya está en UTC
-
-                next_processed_intervals = []
+                next_processed_intervals_after_block = []
                 for interval in processed_intervals_for_day:
-                    # Lógica para restar tb_start_utc, tb_end_utc del interval['start'], interval['end']
-                    # Esto puede resultar en 0, 1 o 2 nuevos intervalos.
-                    
-                    # Caso 1: El bloqueo no se solapa con el intervalo -> el intervalo se mantiene
                     if tb_end_utc <= interval['start'] or tb_start_utc >= interval['end']:
-                        next_processed_intervals.append(interval)
+                        next_processed_intervals_after_block.append(interval)
                         continue
-
-                    # Caso 2: El bloqueo cubre parte del inicio del intervalo
-                    # [tb_start --- tb_end]
-                    #          [interval_start --- interval_end]
-                    # Resultado: [tb_end --- interval_end]
                     if tb_start_utc <= interval['start'] < tb_end_utc < interval['end']:
                         new_interval_start = tb_end_utc
-                        if new_interval_start < interval['end']: # Asegurar que el nuevo intervalo es válido
-                             next_processed_intervals.append({'start': new_interval_start, 'end': interval['end']})
-                    
-                    # Caso 3: El bloqueo cubre parte del final del intervalo
-                    #          [tb_start --- tb_end]
-                    # [interval_start --- interval_end]
-                    # Resultado: [interval_start --- tb_start]
+                        if new_interval_start < interval['end']:
+                             next_processed_intervals_after_block.append({'start': new_interval_start, 'end': interval['end']})
                     elif interval['start'] < tb_start_utc < interval['end'] <= tb_end_utc:
                         new_interval_end = tb_start_utc
-                        if interval['start'] < new_interval_end: # Asegurar que el nuevo intervalo es válido
-                            next_processed_intervals.append({'start': interval['start'], 'end': new_interval_end})
-
-                    # Caso 4: El bloqueo está completamente dentro del intervalo (lo divide en dos)
-                    #    [tb_start --- tb_end]
-                    # [interval_start --------- interval_end]
-                    # Resultado: [interval_start --- tb_start] Y [tb_end --- interval_end]
+                        if interval['start'] < new_interval_end:
+                            next_processed_intervals_after_block.append({'start': interval['start'], 'end': new_interval_end})
                     elif interval['start'] < tb_start_utc and tb_end_utc < interval['end']:
-                        # Primer trozo
                         if interval['start'] < tb_start_utc:
-                            next_processed_intervals.append({'start': interval['start'], 'end': tb_start_utc})
-                        # Segundo trozo
+                            next_processed_intervals_after_block.append({'start': interval['start'], 'end': tb_start_utc})
                         if tb_end_utc < interval['end']:
-                            next_processed_intervals.append({'start': tb_end_utc, 'end': interval['end']})
-                    
-                    # Caso 5: El bloqueo cubre completamente el intervalo -> el intervalo se elimina
-                    # [tb_start ------------- tb_end]
-                    #    [interval_start --- interval_end]
-                    # Resultado: Nada (no se añade a next_processed_intervals)
+                            next_processed_intervals_after_block.append({'start': tb_end_utc, 'end': interval['end']})
                     elif tb_start_utc <= interval['start'] and tb_end_utc >= interval['end']:
-                        pass # No se añade el intervalo
+                        pass 
+                processed_intervals_for_day = next_processed_intervals_after_block
+        current_app.logger.debug(f"    Intervalos DESPUÉS de aplicar bloqueos (is_available=False): {processed_intervals_for_day}")
 
-                    # Caso 6: El intervalo está completamente dentro del bloqueo (similar al caso 5)
-                    #    [tb_start --- tb_end]
-                    # [interval_start --------- interval_end]
-                    # Es el mismo que el caso 5 si se interpretan los límites correctamente
-                    
-                    else:
-                        # Podría haber otros casos o una forma más genérica de manejar esto.
-                        # Por ahora, si no cae en los anteriores, mantenemos el intervalo original
-                        # (esto debería revisarse para asegurar que todos los solapamientos se manejan)
-                        # current_app.logger.warning(f"      Caso de solapamiento no manejado explícitamente entre intervalo {interval} y bloqueo {tb_start_utc}-{tb_end_utc}")
-                        next_processed_intervals.append(interval) # Fallback, revisar esta lógica
-
-                processed_intervals_for_day = next_processed_intervals # Actualizar la lista para el siguiente bloqueo
-
-        # TODO: Aplicar TimeBlocks que son is_available=True (disponibilidad extra)
-        # Esto implicaría añadir estos bloques y luego fusionar intervalos solapados.
-        # Por ahora, nos centramos en los bloqueos.
-
-        # C. TODO: Restar Appointments existentes para current_date_iter
+        extra_availability_intervals_utc = []
+        for tb in provider_time_blocks_for_day:
+            if tb.is_available:
+                tb_start_utc_extra = tb.start_datetime.astimezone(timezone.utc) # Asegurar UTC
+                tb_end_utc_extra = tb.end_datetime.astimezone(timezone.utc)     # Asegurar UTC
+                effective_start_extra = max(tb_start_utc_extra, day_start_utc)
+                effective_end_extra = min(tb_end_utc_extra, day_end_utc)
+                if effective_start_extra < effective_end_extra:
+                    extra_availability_intervals_utc.append({'start': effective_start_extra, 'end': effective_end_extra})
+                    current_app.logger.debug(f"    Añadiendo TimeBlock de disponibilidad EXTRA ID {tb.id}: UTC {effective_start_extra.isoformat()} - {effective_end_extra.isoformat()}")
         
-        # D. TODO: Generar slots de la duración del servicio a partir de los intervalos finales
+        combined_intervals_for_day = processed_intervals_for_day + extra_availability_intervals_utc
+        current_app.logger.debug(f"    Intervalos combinados (base - bloqueos + extras) ANTES de fusionar: {combined_intervals_for_day}")
+        merged_intervals_for_day = merge_overlapping_intervals(combined_intervals_for_day)
+        current_app.logger.debug(f"    Intervalos fusionados DESPUÉS de merge: {merged_intervals_for_day}")
+        processed_intervals_for_day = merged_intervals_for_day
         
-        # Actualizar la salida temporal para ver los intervalos después de aplicar bloqueos
-        for interval in processed_intervals_for_day: # Usar los intervalos procesados
-             all_available_slots.append({
-                 "start_datetime": interval['start'].isoformat(),
-                 "end_datetime": interval['end'].isoformat(),
-                 "comment": "Intervalo después de aplicar TimeBlocks (is_available=False)"
-             })
+        # --- INICIO BLOQUE C: Restar Appointments existentes ---
+        current_app.logger.debug(f"  Iniciando C. Restar Citas Existentes para {current_date_iter}")
+        blocking_appointment_statuses = ['CONFIRMED', 'PENDING_PROVIDER'] 
+        appointments_for_day = Appointment.query.filter(
+            Appointment.provider_id == provider.provider_id,
+            Appointment.status.in_(blocking_appointment_statuses),
+            Appointment.start_datetime < day_end_utc,
+            Appointment.end_datetime > day_start_utc
+        ).all()
+        current_app.logger.debug(f"    Día {current_date_iter}: {len(appointments_for_day)} citas encontradas con estados {blocking_appointment_statuses}.")
+
+        if appointments_for_day:
+            for appt in appointments_for_day:
+                appt_start_utc = appt.start_datetime.astimezone(timezone.utc)
+                appt_end_utc = appt.end_datetime.astimezone(timezone.utc)
+                current_app.logger.debug(f"      Restando cita ID {appt.id}: UTC {appt_start_utc.isoformat()} - {appt_end_utc.isoformat()}")
+                
+                next_intervals_after_this_appt = []
+                for work_interval in processed_intervals_for_day:
+                    if appt_end_utc <= work_interval['start'] or appt_start_utc >= work_interval['end']:
+                        next_intervals_after_this_appt.append(work_interval)
+                        continue
+                    if appt_start_utc <= work_interval['start'] and appt_end_utc > work_interval['start'] and appt_end_utc < work_interval['end']:
+                        new_interval_start = appt_end_utc
+                        if new_interval_start < work_interval['end']:
+                             next_intervals_after_this_appt.append({'start': new_interval_start, 'end': work_interval['end']})
+                    elif appt_start_utc > work_interval['start'] and appt_start_utc < work_interval['end'] and appt_end_utc >= work_interval['end']:
+                        new_interval_end = appt_start_utc
+                        if work_interval['start'] < new_interval_end:
+                            next_intervals_after_this_appt.append({'start': work_interval['start'], 'end': new_interval_end})
+                    elif appt_start_utc > work_interval['start'] and appt_end_utc < work_interval['end']:
+                        if work_interval['start'] < appt_start_utc:
+                            next_intervals_after_this_appt.append({'start': work_interval['start'], 'end': appt_start_utc})
+                        if appt_end_utc < work_interval['end']:
+                            next_intervals_after_this_appt.append({'start': appt_end_utc, 'end': work_interval['end']})
+                    elif appt_start_utc <= work_interval['start'] and appt_end_utc >= work_interval['end']:
+                        pass
+                processed_intervals_for_day = next_intervals_after_this_appt
+        current_app.logger.debug(f"    Intervalos DESPUÉS de restar todas las citas para {current_date_iter}: {processed_intervals_for_day}")
+        # --- FIN BLOQUE C ---
+
+    # D. Generar slots de la duración del servicio a partir de los intervalos finales
+        current_app.logger.debug(f"  Iniciando D. Generar Slots Finales para {current_date_iter.isoformat()}. Duración del servicio: {service_duration}")
+        
+        for interval in processed_intervals_for_day:
+            interval_start_dt = interval['start']
+            interval_end_dt = interval['end']
+            
+            current_slot_start_dt = interval_start_dt
+            while current_slot_start_dt + service_duration <= interval_end_dt:
+                # Este es un slot válido. Lo añadimos a la lista de resultados.
+                # La variable all_available_slots_info se inicializó antes del bucle de días.
+                all_available_slots_info.append({
+                    "slot_start_utc": current_slot_start_dt.isoformat(),
+                    "date_for_slot": current_date_iter.isoformat() 
+                    # Opcional: podrías añadir "slot_end_utc": (current_slot_start_dt + service_duration).isoformat()
+                })
+                current_app.logger.debug(f"    Slot generado: {current_slot_start_dt.isoformat()} para el día {current_date_iter.isoformat()}")
+                
+                # Avanzar al inicio del siguiente posible slot
+                current_slot_start_dt += service_duration
 
         current_date_iter += timedelta(days=1)
     
-    return jsonify(all_available_slots), 200
-
-# SG: Necesitaremos una función helper o lógica compleja aquí dentro
-# def calculate_slots_for_day(target_date, day_of_week_int, provider_obj, service_duration_td, provider_tz_obj):
-#     # ... (lógica detallada) ...
-#     return []
+    return jsonify(all_available_slots_info), 200
