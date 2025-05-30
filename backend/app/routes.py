@@ -70,6 +70,38 @@ def api_test_db():
 # --- Autenticación Endpoints ---
 @bp_api.route('/auth/register/provider', methods=['POST'])
 def register_provider():
+    """
+    POST /auth/register/provider
+    -----------------------------
+
+    Registra un nuevo usuario con rol "provider" y crea automáticamente su perfil de proveedor.
+
+    ✅ Campos requeridos (en JSON):
+        - email: str — Email del usuario.
+        - password: str — Contraseña del usuario (se guarda hasheada).
+        - business_name: str — Nombre del negocio del proveedor.
+
+    🟡 Campos opcionales:
+        - first_name: str — Nombre del usuario.
+        - last_name: str — Apellido del usuario.
+        - phone_number: str — Teléfono de contacto.
+        - business_type: str — Tipo de negocio. Por defecto 'default_type'.
+        - timezone: str — Zona horaria. Por defecto 'UTC'.
+        - address: str — Dirección del negocio.
+        - bio: str — Descripción o biografía del proveedor.
+
+    📤 Respuesta (201):
+        {
+            "msg": "Proveedor registrado exitosamente!",
+            "user": { ...datos del usuario... },
+            "provider_profile": { ...datos del perfil proveedor... }
+        }
+
+    ❌ Errores posibles:
+        - 400: Si falta algún campo obligatorio.
+        - 409: Si el email ya está registrado.
+        - 500: Si ocurre un error interno al guardar en base de datos.
+    """
     data = request.get_json()
     if not data or not data.get('email') or not data.get('password') or not data.get('business_name'):
         return jsonify({"msg": "Faltan datos requeridos: email, password, business_name"}), 400
@@ -116,6 +148,32 @@ def register_provider():
 
 @bp_api.route('/auth/register/client', methods=['POST'])
 def register_client():
+    """
+    POST /auth/register/client
+    ---------------------------
+
+    Registra un nuevo usuario con rol "client".
+
+    ✅ Campos requeridos (en JSON):
+        - email: str — Email del usuario.
+        - password: str — Contraseña del usuario (se guarda de forma segura).
+
+    🟡 Campos opcionales:
+        - first_name: str — Nombre del cliente.
+        - last_name: str — Apellido del cliente.
+        - phone_number: str — Teléfono de contacto.
+
+    📤 Respuesta (201):
+        {
+            "msg": "Cliente registrado exitosamente!",
+            "user": { ...datos del usuario... }
+        }
+
+    ❌ Errores posibles:
+        - 400: Si falta el email o la contraseña.
+        - 409: Si ya existe un usuario con ese email.
+        - 500: Si ocurre un error interno al guardar en base de datos.
+    """
     data = request.get_json()
     if not data or not data.get('email') or not data.get('password'):
         return jsonify({"msg": "Faltan datos requeridos: email, password"}), 400
@@ -150,6 +208,33 @@ def register_client():
 
 @bp_api.route('/auth/login', methods=['POST'])
 def login():
+    """
+    POST /auth/login
+    ----------------
+
+    Inicia sesión de un usuario (cliente o proveedor) y genera un JWT válido.
+
+    ✅ Campos requeridos (en JSON):
+        - email: str — Email del usuario.
+        - password: str — Contraseña del usuario.
+
+    📤 Respuesta exitosa (200):
+        {
+            "access_token": "JWT_TOKEN_GENERADO",
+            "user_id": int,
+            "role": "client" | "provider"
+        }
+
+    ❌ Errores posibles:
+        - 400: Si faltan email o contraseña.
+        - 401: Si las credenciales son incorrectas.
+
+    🔐 Seguridad:
+        - Utiliza JWT (Json Web Tokens) para autenticar futuras solicitudes.
+        - El token generado se debe incluir en el header Authorization como:
+            Authorization: Bearer <token>
+    """
+
     data = request.get_json()
     if not data or not data.get('email') or not data.get('password'):
         return jsonify({"msg": "Faltan email o contraseña"}), 400
@@ -166,10 +251,36 @@ def login():
     else:
         return jsonify({"msg": "Credenciales incorrectas"}), 401
 
-# --- Ruta Protegida de Ejemplo ---
 @bp_api.route('/protected', methods=['GET'])
 @jwt_required()
 def protected_route_example():
+    """
+    GET /protected
+    --------------
+
+    Ruta protegida de ejemplo que requiere autenticación JWT para acceder.
+
+    🔐 Requiere token JWT válido:
+        - El token debe ser incluido en el header Authorization:
+          Authorization: Bearer <access_token>
+
+    📤 Respuesta exitosa (200):
+        {
+            "logged_in_as": "usuario@example.com",
+            "user_id": 1,
+            "role": "client" | "provider",
+            "message": "¡Acceso a ruta protegida concedido!"
+        }
+
+    ❌ Errores posibles:
+        - 401: Token JWT ausente, inválido o expirado.
+        - 422: Identidad del token no es un entero válido.
+        - 404: Usuario no encontrado con el ID extraído del token.
+
+    📚 Propósito:
+        Esta ruta sirve como ejemplo para validar que el sistema de autenticación
+        JWT está funcionando correctamente. Ideal para testing o debugging.
+    """
     current_app.logger.info("Accediendo a ruta protegida '/protected'.")
     try:
         raw_jwt_header = request.headers.get('Authorization')
@@ -193,10 +304,54 @@ def protected_route_example():
     current_app.logger.info(f"Usuario autenticado en '/protected': {user.email} (ID: {user.user_id})")
     return jsonify(logged_in_as=user.email, user_id=user.user_id, role=user.role, message="¡Acceso a ruta protegida concedido!"), 200
 
-# --- Endpoints CRUD para Servicios ---
 @bp_api.route('/services', methods=['POST'])
 @jwt_required()
 def create_service():
+    """
+    POST /services
+    --------------
+
+    Crea un nuevo servicio para un proveedor autenticado.
+
+    🔐 Requiere autenticación JWT:
+        - Solo usuarios con rol `provider` pueden acceder.
+        - El usuario debe tener un perfil de proveedor asociado.
+
+    📥 Cuerpo JSON requerido:
+        {
+            "name": "Corte de cabello",
+            "description": "Servicio de peluquería profesional",
+            "duration_minutes": 30,
+            "price": 15.5,                  # Opcional
+            "is_active": true               # Opcional, por defecto True
+        }
+
+    📤 Respuesta exitosa (201):
+        {
+            "msg": "Servicio creado exitosamente!",
+            "service": {
+                "service_id": 1,
+                "provider_id": 2,
+                "name": "Corte de cabello",
+                "description": "...",
+                "duration_minutes": 30,
+                "price": 15.5,
+                "is_active": true
+            }
+        }
+
+    ❌ Errores posibles:
+        - 400: Faltan campos obligatorios o valores inválidos (nombre, duración, precio negativo, etc.).
+        - 401: Token JWT ausente o inválido.
+        - 403: Usuario no tiene rol `provider`.
+        - 404: Usuario del token no encontrado.
+        - 422: Identidad del token no es un número válido.
+        - 500: Error interno al guardar en la base de datos.
+
+    📚 Propósito:
+        Permite a proveedores crear nuevos servicios disponibles para que los clientes los reserven.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -257,6 +412,40 @@ def create_service():
 @bp_api.route('/services', methods=['GET'])
 @jwt_required()
 def get_provider_services():
+    """
+    GET /services
+    --------------
+
+    Obtiene la lista de servicios ofrecidos por el proveedor autenticado.
+
+    🔐 Requiere autenticación JWT:
+        - Solo usuarios con rol `provider` pueden acceder.
+        - El usuario debe tener un perfil de proveedor asociado.
+
+    📤 Respuesta exitosa (200):
+        [
+            {
+                "service_id": 1,
+                "provider_id": 2,
+                "name": "Corte de cabello",
+                "description": "Servicio de peluquería profesional",
+                "duration_minutes": 30,
+                "price": 15.5,
+                "is_active": true
+            },
+            ...
+        ]
+
+    ❌ Errores posibles:
+        - 401: Token JWT ausente o inválido.
+        - 403: Acceso denegado o usuario no tiene el rol adecuado.
+        - 404: No se encontró perfil de proveedor asociado.
+        - 422: Identidad del token no es un número válido.
+
+    📚 Propósito:
+        Permite al proveedor autenticado ver todos los servicios que ha registrado.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -275,6 +464,41 @@ def get_provider_services():
 @bp_api.route('/services/<int:service_id>', methods=['GET'])
 @jwt_required()
 def get_service_detail(service_id):
+    """
+    GET /services/<service_id>
+    ----------------------------
+
+    Obtiene el detalle de un servicio específico creado por el proveedor autenticado.
+
+    🔐 Requiere autenticación JWT:
+        - Solo accesible para usuarios con rol `provider`.
+        - El servicio debe pertenecer al proveedor autenticado.
+
+    📥 Parámetros:
+        - service_id (int): ID del servicio a consultar.
+
+    📤 Respuesta exitosa (200):
+        {
+            "service_id": 1,
+            "provider_id": 2,
+            "name": "Consulta inicial",
+            "description": "Sesión de evaluación inicial con el cliente",
+            "duration_minutes": 60,
+            "price": 50.0,
+            "is_active": true
+        }
+
+    ❌ Errores posibles:
+        - 401: Token JWT ausente o inválido.
+        - 403: Acceso denegado o el servicio no pertenece al proveedor autenticado.
+        - 404: Servicio no encontrado o perfil de proveedor inexistente.
+        - 422: El valor de identidad del token no es un entero válido.
+
+    📚 Propósito:
+        Permite al proveedor ver todos los detalles de uno de sus servicios individuales,
+        útil para edición o revisión en la interfaz de administración.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -297,6 +521,51 @@ def get_service_detail(service_id):
 @bp_api.route('/services/<int:service_id>', methods=['PUT'])
 @jwt_required()
 def update_service(service_id):
+    """
+    PUT /services/<service_id>
+    ----------------------------
+
+    Actualiza un servicio existente del proveedor autenticado.
+
+    🔐 Requiere autenticación JWT:
+        - Solo accesible para usuarios con rol `provider`.
+        - El servicio debe pertenecer al proveedor autenticado.
+
+    📥 Parámetros:
+        - service_id (int): ID del servicio que se desea actualizar.
+        - Body JSON opcional con los siguientes campos:
+            - name (str): Nombre del servicio.
+            - description (str): Descripción del servicio.
+            - duration_minutes (int): Duración en minutos (debe ser entero positivo).
+            - price (float | null): Precio del servicio (debe ser número positivo o null).
+            - is_active (bool): Estado de activación del servicio.
+
+    📤 Respuesta exitosa (200):
+        {
+            "msg": "Servicio actualizado exitosamente",
+            "service": {
+                "service_id": 1,
+                "provider_id": 2,
+                "name": "Consulta modificada",
+                "description": "...",
+                "duration_minutes": 45,
+                "price": 40.0,
+                "is_active": true
+            }
+        }
+
+    ❌ Errores posibles:
+        - 400: Datos inválidos o faltantes.
+        - 401: Token JWT inválido o ausente.
+        - 403: El usuario no tiene permiso para modificar este servicio.
+        - 404: Servicio no encontrado o perfil de proveedor no existe.
+        - 422: Token inválido (identidad no convertible a entero).
+        - 500: Error interno al guardar los cambios en base de datos.
+
+    📚 Propósito:
+        Permite al proveedor modificar los datos de sus servicios desde la interfaz de administración.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -350,6 +619,36 @@ def update_service(service_id):
 @bp_api.route('/services/<int:service_id>', methods=['DELETE'])
 @jwt_required()
 def delete_service(service_id):
+    """
+    DELETE /services/<service_id>
+    -----------------------------
+
+    Elimina un servicio específico perteneciente al proveedor autenticado.
+
+    🔐 Requiere autenticación JWT:
+        - Solo accesible para usuarios con rol `provider`.
+        - El servicio debe pertenecer al proveedor autenticado.
+
+    📥 Parámetros:
+        - service_id (int): ID del servicio que se desea eliminar.
+
+    📤 Respuesta exitosa (200):
+        {
+            "msg": "Servicio eliminado exitosamente"
+        }
+
+    ❌ Errores posibles:
+        - 400: Perfil de proveedor no válido.
+        - 401: Token JWT inválido o ausente.
+        - 403: Usuario no tiene permiso para eliminar este servicio.
+        - 404: Servicio no encontrado o no pertenece al proveedor.
+        - 422: Token inválido (identidad no convertible a entero).
+        - 500: Error interno al eliminar el servicio en base de datos.
+
+    📚 Propósito:
+        Permite a un proveedor eliminar un servicio existente que ha sido creado previamente.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -381,6 +680,57 @@ def delete_service(service_id):
 @bp_api.route('/availability-rules', methods=['POST'])
 @jwt_required()
 def create_availability_rule():
+    """
+    POST /availability-rules
+    =========================
+
+    🔐 Ruta protegida para crear una regla de disponibilidad recurrente para un proveedor.
+
+    Esta regla define en qué días de la semana y horarios un proveedor estará disponible.
+
+    Requisitos:
+    -----------
+    - El usuario debe estar autenticado mediante JWT.
+    - El usuario debe tener el rol "provider".
+    - El proveedor debe tener un perfil asociado.
+
+    JSON esperado (Body):
+    ----------------------
+    {
+        "day_of_week": "MONDAY",          # Día de la semana (mayúsculas preferidas, e.g. MONDAY, TUESDAY...)
+        "start_time": "09:00",            # Hora de inicio en formato HH:MM o HH:MM:SS
+        "end_time": "17:00"               # Hora de fin en formato HH:MM o HH:MM:SS
+    }
+
+    Días válidos:
+    -------------
+    - MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+
+    Respuestas:
+    -----------
+    ✅ 201 Created:
+        {
+            "msg": "Regla de disponibilidad creada exitosamente",
+            "rule": { ... }
+        }
+
+    ⚠️ 400 Bad Request:
+        - Faltan campos requeridos.
+        - Formato de hora inválido.
+        - day_of_week no válido.
+        - start_time es posterior o igual a end_time.
+        - El usuario no tiene perfil de proveedor.
+
+    ⚠️ 403 Forbidden:
+        - El usuario no tiene rol de proveedor.
+
+    ❌ 422 Unprocessable Entity:
+        - Identidad del token inválida.
+
+    ❌ 500 Internal Server Error:
+        - Fallo al guardar en la base de datos.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -438,6 +788,45 @@ def create_availability_rule():
 @bp_api.route('/availability-rules', methods=['GET'])
 @jwt_required()
 def get_availability_rules():
+    """
+    GET /availability-rules
+    ========================
+
+    🔐 Ruta protegida que devuelve la lista de reglas de disponibilidad recurrente
+    asociadas al proveedor autenticado.
+
+    Cada regla indica un día de la semana y un rango horario en el que el proveedor está disponible.
+
+    Requisitos:
+    -----------
+    - El usuario debe estar autenticado mediante JWT.
+    - El usuario debe tener el rol "provider".
+    - El proveedor debe tener un perfil asociado.
+
+    Respuesta:
+    ----------
+    ✅ 200 OK:
+        [
+            {
+                "id": 1,
+                "day_of_week": "MONDAY",
+                "start_time": "09:00:00",
+                "end_time": "17:00:00",
+                ...
+            },
+            ...
+        ]
+
+    ⚠️ 403 Forbidden:
+        - El usuario no tiene rol de proveedor o no está autorizado.
+
+    ⚠️ 404 Not Found:
+        - El proveedor no tiene un perfil asociado.
+
+    ❌ 422 Unprocessable Entity:
+        - Identidad del token inválida.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -458,6 +847,49 @@ def get_availability_rules():
 @bp_api.route('/availability-rules/<int:rule_id>', methods=['DELETE'])
 @jwt_required()
 def delete_availability_rule(rule_id):
+    """
+    DELETE /availability-rules/<int:rule_id>
+    ========================================
+
+    🔐 Ruta protegida que permite a un proveedor eliminar una regla de disponibilidad recurrente
+    previamente creada.
+
+    Solo el proveedor que creó la regla puede eliminarla.
+
+    Parámetros:
+    -----------
+    - rule_id (int): ID de la regla de disponibilidad a eliminar.
+
+    Requisitos:
+    -----------
+    - El usuario debe estar autenticado mediante JWT.
+    - El usuario debe tener rol "provider".
+    - La regla debe pertenecer al proveedor autenticado.
+
+    Respuesta:
+    ----------
+    ✅ 200 OK:
+        {
+            "msg": "Regla de disponibilidad eliminada exitosamente"
+        }
+
+    ⚠️ 400 Bad Request:
+        - El proveedor no tiene perfil asociado.
+
+    ⚠️ 403 Forbidden:
+        - El usuario no es proveedor o intenta eliminar una regla ajena.
+
+    ⚠️ 404 Not Found:
+        - La regla de disponibilidad no existe.
+        - El usuario no existe en base de datos.
+
+    ❌ 422 Unprocessable Entity:
+        - La identidad extraída del token no es válida.
+
+    ❌ 500 Internal Server Error:
+        - Error inesperado al intentar eliminar la regla.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -500,6 +932,66 @@ def delete_availability_rule(rule_id):
 @bp_api.route('/availability-rules/<int:rule_id>', methods=['PUT'])
 @jwt_required()
 def update_availability_rule(rule_id):
+    """
+    PUT /availability-rules/<int:rule_id>
+    =====================================
+
+    🔐 Ruta protegida que permite a un proveedor autenticado actualizar una regla de disponibilidad existente.
+
+    Solo el proveedor que creó la regla puede modificarla. Los campos que pueden actualizarse son:
+    - day_of_week (str): Día de la semana (ej: "MONDAY", "TUESDAY", etc.)
+    - start_time (str): Hora de inicio en formato HH:MM o HH:MM:SS.
+    - end_time (str): Hora de fin en formato HH:MM o HH:MM:SS.
+
+    Parámetros:
+    -----------
+    - rule_id (int): ID de la regla a actualizar.
+    - JSON Body (al menos uno requerido):
+        {
+            "day_of_week": "MONDAY",
+            "start_time": "09:00",
+            "end_time": "17:00"
+        }
+
+    Requisitos:
+    -----------
+    - Usuario autenticado con JWT.
+    - Usuario con rol "provider".
+    - El ID de la regla debe pertenecer al proveedor autenticado.
+
+    Respuestas:
+    -----------
+    ✅ 200 OK:
+        {
+            "msg": "Regla de disponibilidad actualizada exitosamente",
+            "rule": { ... }
+        }
+
+    ⚠️ 200 OK (sin cambios):
+        {
+            "msg": "Los datos proporcionados no modifican la regla actual.",
+            "rule": { ... }
+        }
+
+    ⚠️ 400 Bad Request:
+        - No se proporcionaron datos válidos.
+        - day_of_week inválido.
+        - Formato de hora incorrecto.
+        - start_time posterior o igual a end_time.
+
+    ⚠️ 403 Forbidden:
+        - El usuario no es proveedor o intenta modificar reglas ajenas.
+
+    ⚠️ 404 Not Found:
+        - Usuario o regla no encontrada.
+
+    ❌ 422 Unprocessable Entity:
+        - La identidad del JWT no es válida.
+
+    ❌ 500 Internal Server Error:
+        - Error inesperado al guardar cambios.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -614,6 +1106,64 @@ def update_availability_rule(rule_id):
 @bp_api.route('/time-blocks', methods=['POST'])
 @jwt_required()
 def create_time_block():
+    """
+    POST /time-blocks
+    =================
+
+    🔐 Ruta protegida que permite a un proveedor autenticado crear un bloque de tiempo (disponible o no disponible)
+    en su calendario.
+
+    Este endpoint sirve para marcar disponibilidad o indisponibilidad específica en momentos concretos, complementando
+    la disponibilidad recurrente semanal.
+
+    Requisitos:
+    -----------
+    - Usuario autenticado mediante JWT.
+    - Usuario con rol "provider".
+    - El proveedor debe tener un perfil creado.
+
+    Cuerpo JSON requerido:
+    ----------------------
+    {
+        "start_datetime": "2025-06-01T09:00:00+02:00",  # Obligatorio
+        "end_datetime": "2025-06-01T11:00:00+02:00",    # Obligatorio
+        "is_available": false,                          # Opcional (por defecto: false)
+        "reason": "Vacaciones"                          # Opcional (texto explicativo)
+    }
+
+    Notas importantes:
+    ------------------
+    - Los campos `start_datetime` y `end_datetime` deben incluir zona horaria (ej: `+02:00` o `Z`).
+    - `start_datetime` debe ser anterior a `end_datetime`.
+    - `is_available` debe ser booleano (true / false).
+
+    Respuestas:
+    -----------
+    ✅ 201 Created:
+        {
+            "msg": "Bloque de tiempo creado exitosamente",
+            "time_block": { ... }
+        }
+
+    ⚠️ 400 Bad Request:
+        - Falta alguno de los campos obligatorios.
+        - Fechas mal formateadas o sin zona horaria.
+        - `is_available` no es booleano.
+        - `start_datetime` no es anterior a `end_datetime`.
+
+    ⚠️ 403 Forbidden:
+        - El usuario autenticado no es proveedor.
+
+    ⚠️ 404 Not Found:
+        - El usuario autenticado no tiene perfil de proveedor.
+
+    ❌ 422 Unprocessable Entity:
+        - El token JWT es inválido.
+
+    ❌ 500 Internal Server Error:
+        - Fallo inesperado en la base de datos o validaciones del modelo.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -704,6 +1254,55 @@ def create_time_block():
 @bp_api.route('/time-blocks', methods=['GET'])
 @jwt_required()
 def get_time_blocks():
+    """
+    GET /time-blocks
+    =================
+
+    🔐 Ruta protegida que permite a un proveedor autenticado obtener la lista de sus bloques de tiempo
+    (disponibles o no disponibles).
+
+    Esta información es útil para visualizar y gestionar la disponibilidad puntual definida por el proveedor.
+
+    Requisitos:
+    -----------
+    - Usuario autenticado mediante JWT.
+    - Usuario con rol "provider".
+    - El proveedor debe tener un perfil creado.
+
+    Parámetros opcionales (query string):
+    -------------------------------------
+    (Nota: actualmente comentados en el código, pero listos para habilitar)
+    - `start_date`: Filtra bloques cuyo `start_datetime` sea igual o posterior a la fecha dada (formato YYYY-MM-DD).
+    - `end_date`: Filtra bloques cuyo `end_datetime` sea anterior a la fecha dada (formato YYYY-MM-DD).
+
+    Respuesta:
+    ----------
+    ✅ 200 OK:
+        [
+            {
+                "id": 1,
+                "provider_id": 2,
+                "start_datetime": "2025-06-01T09:00:00+02:00",
+                "end_datetime": "2025-06-01T11:00:00+02:00",
+                "is_available": false,
+                "reason": "Vacaciones"
+            },
+            ...
+        ]
+
+    ⚠️ 400 Bad Request:
+        - (Si se habilitan los filtros por fecha y están mal formateados).
+
+    ⚠️ 403 Forbidden:
+        - El usuario autenticado no es proveedor.
+
+    ⚠️ 404 Not Found:
+        - El usuario autenticado no tiene perfil de proveedor.
+
+    ❌ 422 Unprocessable Entity:
+        - El token JWT es inválido.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -753,6 +1352,49 @@ def get_time_blocks():
 @bp_api.route('/time-blocks/<int:block_id>', methods=['DELETE'])
 @jwt_required()
 def delete_time_block(block_id):
+    """
+    DELETE /time-blocks/<block_id>
+    ==============================
+
+    🔐 Ruta protegida que permite a un proveedor autenticado eliminar uno de sus bloques de tiempo personalizados.
+
+    Esta operación se utiliza para eliminar bloques de disponibilidad o no disponibilidad previamente definidos
+    (por ejemplo, cancelación de vacaciones o cambios en la agenda).
+
+    Requisitos:
+    -----------
+    - Usuario autenticado mediante JWT.
+    - Usuario con rol "provider".
+    - El proveedor debe tener un perfil asociado.
+    - El bloque debe existir y pertenecer al proveedor autenticado.
+
+    Parámetros de ruta:
+    -------------------
+    - `block_id` (int): ID del bloque de tiempo a eliminar.
+
+    Respuestas:
+    -----------
+    ✅ 200 OK:
+        {
+            "msg": "Bloque de tiempo eliminado exitosamente"
+        }
+
+    ⚠️ 403 Forbidden:
+        - El usuario no es proveedor.
+        - El bloque no pertenece al proveedor autenticado.
+
+    ⚠️ 404 Not Found:
+        - Usuario no encontrado.
+        - Perfil de proveedor no encontrado.
+        - Bloque de tiempo con `block_id` no existe.
+
+    ❌ 422 Unprocessable Entity:
+        - El token JWT contiene una identidad inválida.
+
+    ❌ 500 Internal Server Error:
+        - Error inesperado durante la eliminación en base de datos.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -790,6 +1432,61 @@ def delete_time_block(block_id):
 @bp_api.route('/time-blocks/<int:block_id>', methods=['PUT'])
 @jwt_required()
 def update_time_block(block_id):
+    """
+    PUT /time-blocks/<block_id>
+    ============================
+
+    🔐 Ruta protegida que permite a un proveedor autenticado actualizar uno de sus bloques de tiempo personalizados.
+
+    Los bloques de tiempo permiten definir intervalos específicos de disponibilidad o no disponibilidad. 
+    Este endpoint permite actualizar campos como el inicio, fin, si está disponible y el motivo del bloqueo.
+
+    Requisitos:
+    -----------
+    - Usuario autenticado mediante JWT.
+    - Usuario con rol "provider".
+    - El bloque debe existir y pertenecer al proveedor autenticado.
+
+    Parámetros de ruta:
+    -------------------
+    - `block_id` (int): ID del bloque de tiempo a actualizar.
+
+    Cuerpo de la solicitud (JSON):
+    ------------------------------
+    - `start_datetime` (str, opcional): Fecha y hora de inicio en formato ISO 8601 (con zona horaria).
+    - `end_datetime` (str, opcional): Fecha y hora de fin en formato ISO 8601 (con zona horaria).
+    - `is_available` (bool, opcional): Si el bloque indica disponibilidad o no.
+    - `reason` (str | null, opcional): Razón del bloqueo, puede ser `null`.
+
+    Reglas de validación:
+    ---------------------
+    - `start_datetime` debe ser anterior a `end_datetime`.
+    - Ambos deben incluir zona horaria.
+    - `is_available` debe ser booleano.
+
+    Respuestas:
+    -----------
+    ✅ 200 OK:
+        - Cuando el bloque se actualiza exitosamente.
+        - Cuando los datos enviados no modifican el bloque (sin cambios efectivos).
+
+    ⚠️ 400 Bad Request:
+        - Datos inválidos (ej. fechas mal formateadas, zonas horarias faltantes, etc.).
+        - No se proporcionaron campos válidos para actualizar.
+
+    ⚠️ 403 Forbidden:
+        - El usuario no es proveedor o el bloque no le pertenece.
+
+    ⚠️ 404 Not Found:
+        - Usuario, perfil o bloque no encontrado.
+
+    ❌ 422 Unprocessable Entity:
+        - Token inválido (identidad no es un entero).
+
+    ❌ 500 Internal Server Error:
+        - Fallo inesperado durante la actualización.
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -879,6 +1576,71 @@ def update_time_block(block_id):
 
 @bp_api.route('/providers/<int:provider_id>/available-slots', methods=['GET'])
 def get_available_slots(provider_id):
+    """
+    GET /providers/<provider_id>/available-slots
+    ============================================
+
+    📅 Obtiene todos los "slots" disponibles para un proveedor y un servicio dado en un rango de fechas.
+
+    Este endpoint devuelve los intervalos horarios (en UTC) disponibles para reservar citas,
+    calculados a partir de:
+    - Reglas de disponibilidad del proveedor (`AvailabilityRule`)
+    - Bloques de tiempo personalizados (`TimeBlock`)
+    - Citas ya reservadas (`Appointment`)
+
+    Parámetros de ruta:
+    -------------------
+    - `provider_id` (int): ID del proveedor.
+
+    Parámetros de query (obligatorios):
+    -----------------------------------
+    - `service_id` (int): ID del servicio a consultar.
+    - `start_date` (str): Fecha inicial en formato `YYYY-MM-DD`.
+    - `end_date` (str): Fecha final en formato `YYYY-MM-DD`.
+
+    Reglas de validación:
+    ---------------------
+    - `service_id` debe ser entero válido.
+    - Fechas deben estar en formato correcto.
+    - `start_date` no puede estar en el pasado.
+    - `start_date` ≤ `end_date`
+    - El rango entre `start_date` y `end_date` no puede ser mayor a 60 días.
+    - El proveedor y el servicio deben existir, estar activos y estar correctamente relacionados.
+    - El proveedor debe tener una zona horaria válida configurada.
+
+    Proceso interno:
+    ----------------
+    1. Determina los intervalos de disponibilidad según las reglas (`AvailabilityRule`).
+    2. Aplica exclusiones por bloques no disponibles (`TimeBlock.is_available = False`).
+    3. Añade intervalos extra por bloques explícitamente disponibles (`TimeBlock.is_available = True`).
+    4. Excluye citas reservadas (`Appointment` con estados bloqueantes).
+    5. Divide los intervalos resultantes en "slots" de duración fija (según `Service.duration_minutes`).
+
+    Retorna:
+    --------
+    ✅ 200 OK: Lista de slots disponibles en formato:
+        ```json
+        [
+            {
+                "slot_start_utc": "2025-06-15T10:00:00+00:00",
+                "date_for_slot": "2025-06-15"
+            },
+            ...
+        ]
+        ```
+
+    ⚠️ 400 Bad Request:
+        - Parámetros faltantes o inválidos.
+        - Fechas mal formateadas.
+        - Zona horaria del proveedor inválida o ausente.
+
+    ⚠️ 404 Not Found:
+        - Proveedor o servicio no encontrado.
+
+    ❌ 500 Internal Server Error:
+        - Problemas críticos al procesar la zona horaria.
+    """
+
     current_app.logger.info(f"Solicitando slots disponibles para Provider ID: {provider_id}")
 
     # 1. Obtener Parámetros de Query
@@ -1092,6 +1854,70 @@ def get_available_slots(provider_id):
 @bp_api.route('/appointments', methods=['POST'])
 @jwt_required()
 def create_appointment():
+    """
+    POST /appointments
+    ==================
+
+    📆 Crea una nueva cita para un cliente autenticado.
+
+    Este endpoint permite a los usuarios con rol "client" reservar una cita con un proveedor y servicio específico
+    en una fecha y hora determinadas, siempre que el slot esté disponible.
+
+    Requisitos:
+    -----------
+    - El usuario debe estar autenticado mediante JWT.
+    - El usuario debe tener rol `client`.
+    - El proveedor y el servicio deben existir y estar relacionados.
+    - El servicio debe estar activo.
+    - El slot solicitado debe estar disponible según:
+        - Las reglas de disponibilidad (`AvailabilityRule`)
+        - Los bloques de tiempo (`TimeBlock`)
+        - Las citas ya existentes (`Appointment`)
+
+    Entrada (JSON):
+    ---------------
+    {
+        "provider_id": int,          # ID del proveedor con el que se quiere reservar
+        "service_id": int,           # ID del servicio que se quiere reservar
+        "slot_start_utc": str,       # Inicio del slot en formato ISO UTC, ej: "2025-07-01T09:00:00Z"
+        "notes_client": str | null   # (Opcional) Comentario del cliente
+    }
+
+    Validaciones importantes:
+    -------------------------
+    - `slot_start_utc` debe tener zona horaria (Z o +00:00).
+    - No se permite reservar en horarios fuera de disponibilidad.
+    - Se rechaza si ya existe una cita que se solape con el slot solicitado.
+    - La zona horaria del proveedor debe estar configurada y ser válida.
+    - El rango solicitado debe estar incluido completamente dentro de los periodos disponibles.
+
+    Respuestas:
+    -----------
+    ✅ 201 Created:
+        - Cita creada exitosamente.
+        - Respuesta: `appointment.to_dict()` con los datos de la cita.
+
+    ⚠️ 400 Bad Request:
+        - Parámetros inválidos o faltantes.
+        - Zona horaria ausente en `slot_start_utc`.
+
+    ⚠️ 403 Forbidden:
+        - Usuario no es un cliente.
+
+    ⚠️ 404 Not Found:
+        - Usuario, proveedor o servicio no encontrados.
+
+    ⚠️ 409 Conflict:
+        - El slot solicitado no está disponible (por reglas, bloques o conflictos con citas).
+
+    ❌ 422 Unprocessable Entity:
+        - Token JWT malformado (user_id no entero).
+
+    ❌ 500 Internal Server Error:
+        - Errores internos, típicamente al obtener la zona horaria o al guardar en DB.
+
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id = int(current_user_id_str)
@@ -1353,6 +2179,64 @@ def create_appointment():
 @bp_api.route('/appointments', methods=['GET'])
 @jwt_required()
 def get_appointments():
+    """
+    GET /appointments
+    ==================
+
+    📋 Obtiene todas las citas asociadas al usuario autenticado.
+
+    Este endpoint devuelve una lista de citas ordenadas por fecha (de más reciente a más antigua),
+    dependiendo del rol del usuario:
+    - Si el usuario es un **cliente**, se devuelven sus citas como cliente.
+    - Si el usuario es un **proveedor**, se devuelven las citas asociadas a su perfil de proveedor.
+
+    Requisitos:
+    -----------
+    - El usuario debe estar autenticado mediante JWT.
+    - El usuario debe tener el rol `client` o `provider`.
+    - Los proveedores deben tener configurado un perfil de proveedor válido.
+
+    Salida:
+    -------
+    Una lista JSON de objetos de cita (`Appointment.to_dict()`).
+
+    Ejemplo de respuesta:
+    ---------------------
+    ```json
+    [
+        {
+            "id": 123,
+            "client_id": 1,
+            "provider_id": 5,
+            "service_id": 12,
+            "start_datetime": "2025-07-01T09:00:00Z",
+            "end_datetime": "2025-07-01T09:30:00Z",
+            "status": "CONFIRMED",
+            "notes_client": "Por favor, ser puntual."
+        },
+        ...
+    ]
+    ```
+
+    Respuestas:
+    -----------
+    ✅ 200 OK:
+        - Lista de citas devuelta exitosamente.
+
+    ⚠️ 400 Bad Request:
+        - El proveedor autenticado no tiene perfil asociado.
+
+    ⚠️ 403 Forbidden:
+        - El rol del usuario no está autorizado para esta operación.
+
+    ⚠️ 404 Not Found:
+        - El usuario del token no fue encontrado.
+
+    ❌ 422 Unprocessable Entity:
+        - El ID del usuario en el token no es un entero válido.
+
+    """
+
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id = int(current_user_id_str)
@@ -1390,6 +2274,71 @@ def get_appointments():
 @bp_api.route('/appointments/<int:appointment_id>/cancel', methods=['PUT'])
 @jwt_required()
 def cancel_appointment(appointment_id):
+    """
+    PUT /appointments/<appointment_id>/cancel
+    =========================================
+
+    ❌ Cancela una cita existente, si el usuario autenticado está autorizado.
+
+    Esta operación puede ser realizada por:
+    - El **cliente** que reservó la cita.
+    - El **proveedor** que ofrece el servicio asociado a la cita.
+
+    Requisitos:
+    -----------
+    - Autenticación JWT requerida.
+    - El usuario debe tener el rol `client` o `provider`.
+    - Solo el cliente de la cita o el proveedor asociado puede cancelarla.
+    - La cita debe estar en estado `CONFIRMED` o `PENDING_PROVIDER`.
+
+    Parámetros de ruta:
+    -------------------
+    - appointment_id (int): ID de la cita a cancelar.
+
+    Cambios realizados:
+    -------------------
+    - Si cancela un cliente, el nuevo estado será `CANCELLED_BY_CLIENT`.
+    - Si cancela un proveedor, el nuevo estado será `CANCELLED_BY_PROVIDER`.
+
+    Ejemplo de respuesta:
+    ---------------------
+    ```json
+    {
+        "id": 42,
+        "client_id": 3,
+        "provider_id": 5,
+        "service_id": 7,
+        "start_datetime": "2025-07-01T09:00:00Z",
+        "end_datetime": "2025-07-01T09:30:00Z",
+        "status": "CANCELLED_BY_CLIENT",
+        "notes_client": "No podré asistir."
+    }
+    ```
+
+    Respuestas:
+    -----------
+    ✅ 200 OK:
+        - Cita cancelada exitosamente.
+
+    ⚠️ 400 Bad Request:
+        - El proveedor no tiene un perfil válido asociado.
+
+    ⚠️ 403 Forbidden:
+        - El usuario no está autorizado a cancelar esa cita.
+
+    ⚠️ 404 Not Found:
+        - El usuario o la cita no existen.
+
+    ⚠️ 409 Conflict:
+        - La cita no se puede cancelar por su estado actual.
+
+    ❌ 422 Unprocessable Entity:
+        - El ID del token no es válido.
+
+    ❌ 500 Internal Server Error:
+        - Error inesperado al intentar cancelar la cita.
+    """
+    
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id = int(current_user_id_str)
