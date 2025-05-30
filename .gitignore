@@ -1,2 +1,5 @@
+# Variables de entorno
+*.env
 __pycache__/
 *.pyc
+frontend/node_modules/
