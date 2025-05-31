@@ -12,22 +12,57 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    padding: 20px;
   }
   
   /* Full Page Layout */
-  .page-wrapper {
+.page-wrapper {
     background-color: white;
-    width: 100%;
-    max-width: 400px;
+    width: 928px;
+    /* max-width: 1000px; */
     min-height: 600px;
     border-radius: 10px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-    display: flex;
+    display: flex
+;
     flex-direction: column;
     overflow: hidden;
+    transition: max-width 0.3s;
   }
   
-  /* Header */
+  /* Aumentar tipografía y espaciado en pantallas grandes */
+  @media (min-width: 768px) {
+    .login-container h1 {
+      font-size: 26px;
+    }
+  
+    input, textarea {
+      font-size: 16px;
+      padding: 14px;
+    }
+  
+    button[type="submit"] {
+      font-size: 16px;
+      padding: 16px;
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .login-container h1 {
+      font-size: 30px;
+    }
+  
+    input, textarea {
+      font-size: 17px;
+    }
+  
+    .login-container {
+      padding: 50px;
+    }
+  }
+  
+  
+  
   .login-header {
     background-color: #4f46e5;
     color: white;
@@ -37,7 +72,6 @@
     font-weight: bold;
   }
   
-  /* Login Form */
   .login-container {
     flex: 1;
     padding: 30px;
@@ -55,17 +89,20 @@
   form {
     display: flex;
     flex-direction: column;
+    align-items: center;
   }
   
   label {
+    width: 50%;
     font-weight: 500;
     margin-bottom: 12px;
     color: #444;
     display: flex;
     flex-direction: column;
+    justify-content: center;
   }
   
-  input {
+  input, textarea {
     margin-top: 6px;
     padding: 10px;
     font-size: 15px;
@@ -73,9 +110,10 @@
     border-radius: 6px;
     background-color: #f9f9f9;
     transition: border 0.3s;
+    resize: vertical;
   }
   
-  input:focus {
+  input:focus, textarea:focus {
     border-color: #667eea;
     outline: none;
   }
@@ -97,7 +135,6 @@
     transform: translateY(-1px);
   }
   
-  /* Message */
   .login-message {
     text-align: center;
     margin-top: 15px;
@@ -105,7 +142,6 @@
     color: #d6336c;
   }
   
-  /* Footer */
   .login-footer {
     background-color: #f1f1f1;
     text-align: center;

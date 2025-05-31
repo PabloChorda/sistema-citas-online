@@ -1,5 +1,6 @@
 // src/pages/Login.jsx
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { loginUser } from '../services/authService';
 import '../styles/Login.css';
 
@@ -38,6 +39,14 @@ function Login({ setToken, setRole }) {
           <button type="submit">Iniciar sesión</button>
         </form>
         {message && <p className="login-message">{message}</p>}
+
+        <p className="register-link">
+          ¿No tienes una cuenta? <Link to="/register">Regístrate aquí</Link>
+        </p>
+        <p className="register-link">
+            ¿Eres proveedor? <Link to="/register/provider">Regístrate como proveedor</Link>
+        </p>
+
       </main>
 
       <footer className="login-footer">
@@ -49,5 +58,3 @@ function Login({ setToken, setRole }) {
 }
 
 export default Login;
-
-
