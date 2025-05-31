@@ -6,18 +6,32 @@ from flask_jwt_extended import (
     create_access_token,
     jwt_required,
     get_jwt_identity,
-    get_jwt # Importado para posible logging futuro, no usado activamente ahora
+    get_jwt
 )
-from datetime import date, datetime, time, timedelta, timezone # Para convertir strings a objetos time
+from datetime import date, datetime, time, timedelta, timezone
+
+# REFAC: Intentar importar zoneinfo (Python 3.9+) y pytz como fallback
+try:
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+except ImportError:
+    ZoneInfo = None # type: ignore # Define ZoneInfo como None si no se encuentra
+    ZoneInfoNotFoundError = type(None) # Define ZoneInfoNotFoundError como un tipo base si no se encuentra
+
+try:
+    import pytz
+except ImportError:
+    pytz = None # type: ignore # Define pytz como None si no se encuentra
+
 
 bp_api = Blueprint('api', __name__)
 
 VALID_DAYS_OF_WEEK = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO']
+# REFAC: Constante para mapeo de días de la semana
+PYTHON_WEEKDAY_TO_ENUM_STR = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
 
 
-
-# --- INICIO DE LA FUNCIÓN HELPER ---
-def merge_overlapping_intervals(intervals):
+# --- Funciones Auxiliares ---
+def merge_overlapping_intervals(intervals: list[dict[str, datetime]]) -> list[dict[str, datetime]]:
     """
     Fusiona una lista de intervalos de tiempo que pueden estar solapados o ser adyacentes.
     Cada intervalo es un diccionario {'start': datetime_utc, 'end': datetime_utc}.
@@ -26,11 +40,10 @@ def merge_overlapping_intervals(intervals):
     if not intervals:
         return []
 
-    # Ordenar los intervalos por su tiempo de inicio
     intervals.sort(key=lambda x: x['start'])
-
     merged = []
-    if not intervals: # Doble check por si la lista original estaba vacía
+    # El check 'if not intervals:' de abajo es redundante si ya se hizo arriba, pero no hace daño.
+    if not intervals: 
         return merged
 
     current_start = intervals[0]['start']
@@ -40,22 +53,163 @@ def merge_overlapping_intervals(intervals):
         next_start = intervals[i]['start']
         next_end = intervals[i]['end']
 
-        # Si el siguiente intervalo se solapa o es adyacente al actual
         if next_start <= current_end: 
-            # Fusionar extendiendo el final del intervalo actual si es necesario
             current_end = max(current_end, next_end)
         else:
-            # No hay solapamiento, guardar el intervalo actual fusionado
             merged.append({'start': current_start, 'end': current_end})
-            # Empezar un nuevo intervalo actual
             current_start = next_start
             current_end = next_end
     
-    # Añadir el último intervalo actual fusionado
     merged.append({'start': current_start, 'end': current_end})
-    
     return merged
-# --- FIN DE LA FUNCIÓN HELPER ---
+
+# REFAC: NUEVA FUNCIÓN AUXILIAR para obtener el objeto timezone
+def _get_provider_timezone_object(provider_timezone_str: str) -> timezone | None:
+    """
+    Intenta obtener un objeto tzinfo a partir de un string de zona horaria.
+    Prioriza zoneinfo, luego pytz, y finalmente un fallback para 'UTC'.
+    """
+    provider_tz = None
+    module_name = "_get_provider_timezone_object" # Para logs
+
+    if ZoneInfo: # Si zoneinfo está disponible (Python 3.9+)
+        try:
+            provider_tz = ZoneInfo(provider_timezone_str)
+            current_app.logger.debug(f"{module_name}: Timezone '{provider_timezone_str}' obtenida con zoneinfo.")
+            return provider_tz
+        except ZoneInfoNotFoundError: # type: ignore
+            current_app.logger.warning(f"{module_name}: ZoneInfo no encontró la zona horaria: '{provider_timezone_str}'. Intentando con pytz.")
+        except Exception as e_zi: # Otros errores de ZoneInfo
+            current_app.logger.error(f"{module_name}: Error inesperado con ZoneInfo para '{provider_timezone_str}': {e_zi}")
+    
+    # Si ZoneInfo no está disponible o falló
+    if pytz: # Si pytz está disponible
+        try:
+            provider_tz = pytz.timezone(provider_timezone_str)
+            current_app.logger.debug(f"{module_name}: Timezone '{provider_timezone_str}' obtenida con pytz.")
+            return provider_tz
+        except pytz.UnknownTimeZoneError:
+            current_app.logger.error(f"{module_name}: Zona horaria desconocida '{provider_timezone_str}' con pytz.")
+        except Exception as e_pytz: # Otros errores de pytz
+            current_app.logger.error(f"{module_name}: Error inesperado con pytz para '{provider_timezone_str}': {e_pytz}")
+
+    # Fallback si ni zoneinfo ni pytz funcionaron o no están disponibles
+    if provider_timezone_str and provider_timezone_str.upper() == 'UTC':
+        current_app.logger.warning(f"{module_name}: Usando datetime.timezone.utc como fallback para 'UTC'.")
+        return timezone.utc
+        
+    current_app.logger.error(f"{module_name}: No se pudo obtener el objeto timezone para '{provider_timezone_str}'.")
+    return None
+
+
+# REFAC: NUEVA FUNCIÓN AUXILIAR para calcular disponibilidad diaria (reglas + timeblocks)
+def _calculate_daily_net_working_periods(provider_id: int, target_date: date, provider_tz_obj: timezone) -> list[dict[str, datetime]]:
+    """
+    Calcula los periodos de trabajo netos (en UTC) para un proveedor en una fecha específica,
+    considerando AvailabilityRules y TimeBlocks.
+
+    Args:
+        provider_id: El ID del proveedor (de la tabla Provider, que es user_id).
+        target_date: La fecha local del proveedor para la cual calcular la disponibilidad.
+        provider_tz_obj: El objeto timezone (tzinfo) del proveedor ya resuelto.
+
+    Returns:
+        Una lista de diccionarios {'start': datetime_utc, 'end': datetime_utc}
+        representando los periodos de trabajo netos fusionados, o una lista vacía si no hay disponibilidad.
+    """
+    module_name = "_calculate_daily_net_working_periods" # Para logs
+    current_app.logger.debug(f"{module_name}: Iniciando para Provider ID {provider_id}, Fecha {target_date}, TZ {provider_tz_obj}")
+
+    day_of_week_enum_value = PYTHON_WEEKDAY_TO_ENUM_STR.get(target_date.weekday())
+    base_availability_intervals_utc = []
+
+    if day_of_week_enum_value:
+        rules_for_day = AvailabilityRule.query.filter_by(
+            provider_id=provider_id,
+            day_of_week=day_of_week_enum_value
+        ).all()
+        current_app.logger.debug(f"{module_name}: {len(rules_for_day)} reglas de disponibilidad para {day_of_week_enum_value} el {target_date}.")
+        for rule in rules_for_day:
+            start_dt_naive = datetime.combine(target_date, rule.start_time)
+            end_dt_naive = datetime.combine(target_date, rule.end_time)
+            
+            # Convertir naive datetime a aware datetime usando la zona horaria del proveedor
+            start_dt_aware_provider = start_dt_naive.replace(tzinfo=provider_tz_obj)
+            end_dt_aware_provider = end_dt_naive.replace(tzinfo=provider_tz_obj)
+            
+            base_availability_intervals_utc.append({
+                'start': start_dt_aware_provider.astimezone(timezone.utc),
+                'end': end_dt_aware_provider.astimezone(timezone.utc)
+            })
+    else: # target_date.weekday() no devolvió un día esperado (0-6), lo cual es imposible para un objeto date.
+        current_app.logger.error(f"{module_name}: No se pudo determinar el día de la semana válido para {target_date}")
+        return [] # No se puede proceder sin un día de la semana válido.
+
+    if not base_availability_intervals_utc:
+        current_app.logger.debug(f"{module_name}: No hay reglas de disponibilidad base para Provider ID {provider_id} en {day_of_week_enum_value} ({target_date}).")
+        # Se continúa con lista vacía, los TimeBlocks de is_available=True podrían añadir disponibilidad.
+
+    # Calcular inicio y fin del día (target_date) en UTC para filtrar TimeBlocks
+    day_start_local_naive = datetime.combine(target_date, time.min) # time.min es 00:00:00
+    day_start_aware_provider_tz = day_start_local_naive.replace(tzinfo=provider_tz_obj)
+    day_start_utc = day_start_aware_provider_tz.astimezone(timezone.utc)
+    # El fin del día es el inicio del día siguiente
+    next_day_start_utc = (day_start_aware_provider_tz + timedelta(days=1)).astimezone(timezone.utc)
+
+    time_blocks_for_day = TimeBlock.query.filter(
+        TimeBlock.provider_id == provider_id,
+        TimeBlock.start_datetime < next_day_start_utc, # TimeBlock comienza antes de que termine el target_date
+        TimeBlock.end_datetime > day_start_utc        # TimeBlock termina después de que comience el target_date
+    ).order_by(TimeBlock.start_datetime).all()
+    current_app.logger.debug(f"{module_name}: {len(time_blocks_for_day)} TimeBlocks encontrados solapados con {target_date} para Provider ID {provider_id}.")
+
+    processed_intervals_utc = list(base_availability_intervals_utc)
+
+    # Aplicar TimeBlocks que son is_available=False (bloqueos)
+    for tb in time_blocks_for_day:
+        if not tb.is_available:
+            tb_start_utc = tb.start_datetime.astimezone(timezone.utc)
+            tb_end_utc = tb.end_datetime.astimezone(timezone.utc)
+            current_app.logger.debug(f"{module_name}: Aplicando TimeBlock NO disponible ID {tb.id}: {tb_start_utc.isoformat()} - {tb_end_utc.isoformat()}")
+            
+            next_processed_intervals = []
+            for interval in processed_intervals_utc:
+                # Lógica de resta de intervalos
+                if tb_end_utc <= interval['start'] or tb_start_utc >= interval['end']: # No overlap
+                    next_processed_intervals.append(interval)
+                    continue
+                if tb_start_utc <= interval['start'] and tb_end_utc < interval['end']: # Block covers beginning
+                    if tb_end_utc < interval['end']: next_processed_intervals.append({'start': tb_end_utc, 'end': interval['end']})
+                elif interval['start'] < tb_start_utc and tb_end_utc >= interval['end']: # Block covers end
+                    if interval['start'] < tb_start_utc: next_processed_intervals.append({'start': interval['start'], 'end': tb_start_utc})
+                elif interval['start'] < tb_start_utc and tb_end_utc < interval['end']: # Block in the middle (splits)
+                    if interval['start'] < tb_start_utc: next_processed_intervals.append({'start': interval['start'], 'end': tb_start_utc})
+                    if tb_end_utc < interval['end']: next_processed_intervals.append({'start': tb_end_utc, 'end': interval['end']})
+                elif tb_start_utc <= interval['start'] and tb_end_utc >= interval['end']: # Block covers entirely
+                    pass # Interval is removed
+                else: # Complex overlaps or interval is contained within tb but not perfectly aligned - needs careful review if this branch is hit often
+                    current_app.logger.warning(f"{module_name}: TimeBlock (is_available=False) ID {tb.id} ({tb_start_utc}-{tb_end_utc}) tuvo un solapamiento no estándar con el intervalo {interval}. El intervalo original no se añade.")
+            processed_intervals_utc = next_processed_intervals
+    
+    # Aplicar TimeBlocks que son is_available=True (disponibilidad extra)
+    extra_availability_utc = []
+    for tb in time_blocks_for_day:
+        if tb.is_available:
+            tb_start_utc = tb.start_datetime.astimezone(timezone.utc)
+            tb_end_utc = tb.end_datetime.astimezone(timezone.utc)
+            # Clip the extra availability to the boundaries of the target_date in UTC
+            effective_start = max(tb_start_utc, day_start_utc)
+            effective_end = min(tb_end_utc, next_day_start_utc)
+            if effective_start < effective_end: # Ensure there's a valid interval after clipping
+                current_app.logger.debug(f"{module_name}: Añadiendo TimeBlock disponible ID {tb.id}: UTC {effective_start.isoformat()} - {effective_end.isoformat()}")
+                extra_availability_utc.append({'start': effective_start, 'end': effective_end})
+
+    combined_intervals_utc = processed_intervals_utc + extra_availability_utc
+    net_working_periods_utc = merge_overlapping_intervals(combined_intervals_utc)
+    
+    current_app.logger.debug(f"{module_name}: Para Provider ID {provider_id}, Fecha {target_date}, Periodos netos finales calculados: {net_working_periods_utc}")
+    return net_working_periods_utc
+# --- FIN DE NUEVAS FUNCIONES AUXILIARES ---
 
 # --- Ruta de prueba ---
 @bp_api.route('/test-db', methods=['GET']) 
@@ -704,14 +858,14 @@ def create_availability_rule():
 
     Días válidos:
     -------------
-    - MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+    - MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY  # (Asegúrate que coincida con tu constante VALID_DAYS_OF_WEEK)
 
     Respuestas:
     -----------
     ✅ 201 Created:
         {
             "msg": "Regla de disponibilidad creada exitosamente",
-            "rule": { ... }
+            "rule": { ... } # Objeto de la regla creada
         }
 
     ⚠️ 400 Bad Request:
@@ -730,7 +884,6 @@ def create_availability_rule():
     ❌ 500 Internal Server Error:
         - Fallo al guardar en la base de datos.
     """
-
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -744,24 +897,23 @@ def create_availability_rule():
         return jsonify({"msg": "Perfil de proveedor no encontrado para este usuario"}), 400
 
     data = request.get_json()
-    if not data: return jsonify({"msg": "No se enviaron datos"}), 400
+    if not data: 
+        return jsonify({"msg": "No se enviaron datos"}), 400
 
-    # <<< CAMBIO AQUÍ: Renombrar la variable para claridad >>>
     day_of_week_from_request = data.get('day_of_week') 
     start_time_str = data.get('start_time')
     end_time_str = data.get('end_time')
 
-    # <<< CAMBIO AQUÍ: Validar que los campos requeridos no sean None >>>
     if day_of_week_from_request is None or start_time_str is None or end_time_str is None:
         return jsonify({"msg": "Faltan datos requeridos: day_of_week, start_time, end_time"}), 400
     
-    # <<< CAMBIO AQUÍ: Modificar la validación para day_of_week >>>
     if not isinstance(day_of_week_from_request, str) or day_of_week_from_request.upper() not in VALID_DAYS_OF_WEEK:
         return jsonify({"msg": f"day_of_week debe ser uno de los siguientes valores: {', '.join(VALID_DAYS_OF_WEEK)}"}), 400
     
-    day_of_week_for_db = day_of_week_from_request.upper() # Usar el string en mayúsculas
+    day_of_week_for_db = day_of_week_from_request.upper()
 
     try:
+        # Asumiendo que 'time' está importado de 'from datetime import time' al principio del archivo
         start_time_obj = time.fromisoformat(start_time_str)
         end_time_obj = time.fromisoformat(end_time_str)
     except ValueError:
@@ -772,7 +924,7 @@ def create_availability_rule():
 
     new_rule = AvailabilityRule(
         provider_id=user.provider_profile.provider_id,
-        day_of_week=day_of_week_for_db, # <<< CAMBIO AQUÍ: Usar la variable con el string validado >>>
+        day_of_week=day_of_week_for_db,
         start_time=start_time_obj,
         end_time=end_time_obj
     )
@@ -782,8 +934,8 @@ def create_availability_rule():
         return jsonify({"msg": "Regla de disponibilidad creada exitosamente", "rule": new_rule.to_dict()}), 201
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error al crear regla de disponibilidad: {e}\nTraceback: {e.__traceback__}")
-        return jsonify({"msg": "Error interno al crear la regla de disponibilidad", "error_details": str(e)}), 500
+        current_app.logger.error(f"Error al crear regla de disponibilidad: {e}", exc_info=True) # exc_info=True para traceback completo en logs
+        return jsonify({"msg": "Error interno al crear la regla de disponibilidad."}), 500
 
 @bp_api.route('/availability-rules', methods=['GET'])
 @jwt_required()
@@ -809,24 +961,23 @@ def get_availability_rules():
         [
             {
                 "id": 1,
-                "day_of_week": "MONDAY",
+                "day_of_week": "MONDAY", // O el valor string del ENUM
                 "start_time": "09:00:00",
-                "end_time": "17:00:00",
-                ...
+                "end_time": "17:00:00"
+                // ... otros campos del to_dict() ...
             },
-            ...
+            // ... más reglas ...
         ]
 
     ⚠️ 403 Forbidden:
         - El usuario no tiene rol de proveedor o no está autorizado.
 
     ⚠️ 404 Not Found:
-        - El proveedor no tiene un perfil asociado.
+        - El proveedor no tiene un perfil asociado o el usuario del token no existe.
 
     ❌ 422 Unprocessable Entity:
         - Identidad del token inválida.
     """
-
     current_user_id_str = get_jwt_identity()
     try:
         current_user_id_int = int(current_user_id_str)
@@ -835,10 +986,12 @@ def get_availability_rules():
         
     user = User.query.get(current_user_id_int)
 
-    if not user or user.role != 'provider':
-        return jsonify({"msg": "Acceso denegado"}), 403
+    if not user: # Chequeo añadido por consistencia
+        return jsonify({"msg": "Usuario del token no encontrado."}), 404
+    if user.role != 'provider':
+        return jsonify({"msg": "Acceso denegado."}), 403
     if not user.provider_profile:
-        return jsonify({"msg": "Perfil de proveedor no encontrado"}), 404
+        return jsonify({"msg": "Perfil de proveedor no encontrado."}), 404
 
     rules = user.provider_profile.availability_rules.order_by(AvailabilityRule.day_of_week, AvailabilityRule.start_time).all()
     return jsonify([rule.to_dict() for rule in rules]), 200

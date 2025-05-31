@@ -1,5 +1,9 @@
+<<<<<<< HEAD
+.env
+=======
 # Variables de entorno
 *.env
+>>>>>>> 8c7398c7a42ee9b8bb36311f87b88943074a3bf7
 __pycache__/
 *.pyc
 frontend/node_modules/

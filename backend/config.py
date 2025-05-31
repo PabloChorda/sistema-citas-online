@@ -4,6 +4,7 @@ import os
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or '0g>G#hwr69RxTc#qt8'
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'EstaEsMiClaveDePruebaFinalConSoloLetrasYNumerosABCDEF123456'
+    JWT_ACCESS_TOKEN_EXPIRES = 3600
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Configuración de PostgreSQL leída de variables de entorno
