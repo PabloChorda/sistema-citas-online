@@ -77,7 +77,7 @@ def register_provider():
         
         # Crear perfil de proveedor con el user_id
         new_provider_profile = Provider(
-            user_id=new_user.user_id,  # Asignar explícitamente el user_id
+            provider_id=new_user.user_id,  # Asignar explícitamente el user_id
             business_name=business_name,
             business_type=data.get('business_type', 'default_type'),
             timezone=data.get('timezone', 'UTC'),
