@@ -1,9 +1,23 @@
 import logging
 from logging.config import fileConfig
 
-from flask import current_app
+from flask import current_app # Mantenemos el uso de current_app si es posible
 
 from alembic import context
+
+# MODIFICADO: Añadir imports para asegurar que los modelos son conocidos por SQLAlchemy
+import os
+import sys
+# Añadir el directorio 'backend' al sys.path para que se pueda encontrar el paquete 'app'
+# Esto es crucial si ejecutas alembic desde el directorio 'migrations' o si el contexto no está bien configurado
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Importar la instancia 'db' y TODOS tus modelos explícitamente.
+# Esto asegura que db.metadata esté poblado cuando Alembic lo necesite.
+from app import db as application_db # Importar la instancia db de tu app
+from app.models import User, Provider, Service, AvailabilityRule, TimeBlock, Appointment
+# --- FIN DE MODIFICACIÓN DE IMPORTS ---
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -11,7 +25,8 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
-fileConfig(config.config_file_name)
+if config.config_file_name is not None: # Añadido check por si no se usa alembic.ini
+    fileConfig(config.config_file_name)
 logger = logging.getLogger('alembic.env')
 
 
@@ -36,8 +51,15 @@ def get_engine_url():
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
+
+# MODIFICADO: Usar directamente los metadatos de la instancia db importada
+# Esto es más robusto si current_app no está disponible o configurado como se espera
+# durante la ejecución de `flask db migrate`.
+target_metadata = application_db.metadata
+# --- FIN DE MODIFICACIÓN ---
+
 config.set_main_option('sqlalchemy.url', get_engine_url())
-target_db = current_app.extensions['migrate'].db
+# target_db = current_app.extensions['migrate'].db # Ya no es necesario si usamos application_db.metadata directamente
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -45,10 +67,10 @@ target_db = current_app.extensions['migrate'].db
 # ... etc.
 
 
-def get_metadata():
-    if hasattr(target_db, 'metadatas'):
-        return target_db.metadatas[None]
-    return target_db.metadata
+# def get_metadata(): # Ya no necesitamos esta función si target_metadata se define directamente
+#     if hasattr(target_db, 'metadatas'):
+#         return target_db.metadatas[None]
+#     return target_db.metadata
 
 
 def run_migrations_offline():
@@ -65,7 +87,7 @@ def run_migrations_offline():
     """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=get_metadata(), literal_binds=True
+        url=url, target_metadata=target_metadata, literal_binds=True # MODIFICADO: usar target_metadata directamente
     )
 
     with context.begin_transaction():
@@ -90,7 +112,12 @@ def run_migrations_online():
                 directives[:] = []
                 logger.info('No changes in schema detected.')
 
-    conf_args = current_app.extensions['migrate'].configure_args
+    # Obtener configure_args de la extensión migrate si existe, o usar un dict vacío
+    flask_migrate_extension = current_app.extensions.get('migrate')
+    conf_args = {}
+    if flask_migrate_extension:
+        conf_args = flask_migrate_extension.configure_args
+    
     if conf_args.get("process_revision_directives") is None:
         conf_args["process_revision_directives"] = process_revision_directives
 
@@ -99,7 +126,7 @@ def run_migrations_online():
     with connectable.connect() as connection:
         context.configure(
             connection=connection,
-            target_metadata=get_metadata(),
+            target_metadata=target_metadata, # MODIFICADO: usar target_metadata directamente
             **conf_args
         )
 
