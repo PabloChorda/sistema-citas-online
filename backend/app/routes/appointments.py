@@ -1,12 +1,12 @@
 # backend/app/routes/appointments.py
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import datetime, date, timedelta, time
+from datetime import datetime, date, timedelta, time, timezone
 from app import db
-from app.models import User, Provider, Service, Appointment
+from app.models import User, Provider, Service, Appointment, AvailabilityRule, TimeBlock
 from .helpers import (get_provider_timezone_object, calculate_daily_net_working_periods, merge_overlapping_intervals, PYTHON_WEEKDAY_TO_ENUM_STR)
 
-bp = Blueprint('appointments', __name__)
+bp = Blueprint('appointments', __name__, url_prefix='/appointments')
 
 @bp.route('/providers/<int:provider_id>/available-slots', methods=['GET'])
 def get_available_slots(provider_id):

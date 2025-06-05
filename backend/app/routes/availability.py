@@ -1,6 +1,7 @@
 # backend/app/routes/availability.py
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import time
 from app import db
 from app.models import AvailabilityRule, User
 from .helpers import VALID_DAYS_OF_WEEK
@@ -73,9 +74,9 @@ def create_availability_rule():
     if not user.provider_profile:
         return jsonify({"msg": "Perfil de proveedor no encontrado para este usuario"}), 400
 
-    data = request.get_json()
+    data = request.get_json(force=True, silent=True)
     if not data: 
-        return jsonify({"msg": "No se enviaron datos"}), 400
+        return jsonify({"msg": "No se enviaron datos o JSON inválido"}), 400
 
     day_of_week_from_request = data.get('day_of_week') 
     start_time_str = data.get('start_time')
@@ -371,14 +372,14 @@ def update_availability_rule(rule_id):
 
     if 'start_time' in data:
         try:
-            final_start_time = dt_time.fromisoformat(data['start_time'])
+            final_start_time = time.fromisoformat(data['start_time'])
             updated_fields_count += 1
         except ValueError:
             return jsonify({"msg": "Formato de start_time inválido. Usar HH:MM o HH:MM:SS"}), 400
     
     if 'end_time' in data:
         try:
-            final_end_time = dt_time.fromisoformat(data['end_time'])
+            final_end_time = time.fromisoformat(data['end_time'])
             updated_fields_count += 1
         except ValueError:
             return jsonify({"msg": "Formato de end_time inválido. Usar HH:MM o HH:MM:SS"}), 400
@@ -427,3 +428,4 @@ def update_availability_rule(rule_id):
         db.session.rollback()
         current_app.logger.error(f"Error interno al actualizar regla de disponibilidad ID {rule_id}: {e}\nTraceback: {e.__traceback__}")
         return jsonify({"msg": "Error interno al actualizar la regla", "error_details": str(e)}), 500
+    
