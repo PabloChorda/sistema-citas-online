@@ -22,3 +22,6 @@ class Config:
         # Puedes poner un fallback a SQLite aquí si quieres o simplemente dejar que falle
         # si las variables no están, lo que es mejor para detectar errores.
         SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:" # ¡Solo como un fallback extremo y ruidoso!
+
+class DevelopmentConfig(Config):
+    DEBUG = True

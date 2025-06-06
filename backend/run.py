@@ -1,6 +1,10 @@
-# backend/run.py
+#backend/run.py
+import sys
 import os
 from dotenv import load_dotenv
+
+# Asegurar que la raíz del proyecto está en sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Cargar variables de entorno desde .env (asume que .env está en esta misma carpeta 'backend')
 dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
@@ -14,24 +18,39 @@ else:
 print(f"DB_USER (desde run.py después de load_dotenv): {os.environ.get('DB_USER')}")
 print(f"FLASK_DEBUG (desde run.py después de load_dotenv): {os.environ.get('FLASK_DEBUG')}")
 
-
-# Importar create_app DESPUÉS de cargar .env y DESPUÉS de que config.py haya sido definido
+# Importar create_app y db después de cargar variables
 from app import create_app, db
-from app.models import User, Provider # Asegúrate que los modelos no tengan dependencias de config al importar
-from config import Config # Importa la clase Config
+from config import Config
 
-# Crear la aplicación pasando la CLASE de configuración
-# create_app ahora espera el objeto de la clase, no el nombre.
+# Importar todos los modelos desde app.models (ajustado a tu estructura nueva)
+from app.models import (
+    User,
+    Provider,
+    Service,
+    AvailabilityRule,
+    TimeBlock,
+    Appointment
+)
+
+# Crear la app usando la clase de configuración
 app = create_app(Config)
 
-# Contexto de aplicación para el shell de Flask (opcional pero útil)
+# Contexto de shell de Flask
 @app.shell_context_processor
 def make_shell_context():
-    return {'db': db, 'User': User, 'Provider': Provider}
+    return {
+        'db': db,
+        'User': User,
+        'Provider': Provider,
+        'Service': Service,
+        'AvailabilityRule': AvailabilityRule,
+        'TimeBlock': TimeBlock,
+        'Appointment': Appointment,
+    }
 
+# Ejecutar la app si se llama directamente
 if __name__ == '__main__':
-    # Usar variables de entorno para debug y port si están definidas, sino valores por defecto.
-    debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1' # FLASK_DEBUG=1 para True
+    debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1'
     port_num = int(os.environ.get('PORT', 5001))
     print(f"Iniciando Flask app en modo debug: {debug_mode}, puerto: {port_num}")
-    app.run(debug=debug_mode, port=port_num, host='0.0.0.0') # host='0.0.0.0' para acceder desde la red
+    app.run(debug=debug_mode, port=port_num, host='0.0.0.0')

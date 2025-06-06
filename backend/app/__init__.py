@@ -17,7 +17,7 @@ def create_app(config_class_object):
     Factory de la aplicación Flask.
     Recibe un objeto de clase de configuración.
     """
-    app = Flask(__name__) 
+    app = Flask(__name__)
 
     # Cargar configuración desde el objeto de clase proporcionado
     app.config.from_object(config_class_object)
@@ -38,12 +38,14 @@ def create_app(config_class_object):
     # Configuración CORS
     CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-    # Importar modelos aquí para que SQLAlchemy los conozca
-    try:
-        from . import models
-        app.logger.info("Modelos importados correctamente")
-    except ImportError as e:
-        app.logger.error(f"Error importando modelos: {e}", exc_info=True)
+    # Importar modelos AL NIVEL SUPERIOR para evitar warnings de Pylint
+    # Esto asegura que SQLAlchemy registre todos los modelos
+    from .models import (
+        User, Provider, Service, 
+        AvailabilityRule, TimeBlock, Appointment
+    )
+    
+    app.logger.info("Todos los modelos importados correctamente desde el módulo modularizado")
 
     # Registrar blueprints de manera segura
     register_blueprints(app)
@@ -54,7 +56,11 @@ def create_app(config_class_object):
         app.logger.info("Health check solicitado")
         return jsonify({
             "status": "ok", 
-            "message": "El backend del sistema de citas online está funcionando!"
+            "message": "El backend del sistema de citas online está funcionando!",
+            "models_loaded": [
+                "User", "Provider", "Service", 
+                "AvailabilityRule", "TimeBlock", "Appointment"
+            ]
         }), 200
 
     # Ruta raíz para debugging
@@ -63,6 +69,7 @@ def create_app(config_class_object):
         return jsonify({
             "message": "API del Sistema de Citas Online",
             "status": "running",
+            "version": "2.0 - Modularizado",
             "endpoints": {
                 "health": "/health",
                 "api": "/api/*"
@@ -72,75 +79,84 @@ def create_app(config_class_object):
     app.logger.info(f"Aplicación Flask '{app.name}' creada y configurada exitosamente")
     return app
 
+
 def configure_logging(app):
-    """Configura el sistema de logging de la aplicación"""
-    try:
-        if not app.debug and not app.testing:
-            if app.config.get('LOG_TO_STDOUT'):
-                stream_handler = logging.StreamHandler()
-                stream_handler.setLevel(logging.INFO)
-                formatter = logging.Formatter(
-                    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-                )
-                stream_handler.setFormatter(formatter)
-                app.logger.addHandler(stream_handler)
-            else:
-                # Configurar logging a archivo
-                if not os.path.exists('logs'):
-                    try:
-                        os.mkdir('logs')
-                    except OSError as e:
-                        print(f"No se pudo crear el directorio de logs: {e}")
-
-                if os.path.exists('logs'):
-                    file_handler = logging.FileHandler('logs/flask_backend.log')
-                    file_handler.setFormatter(logging.Formatter(
-                        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
-                    ))
-                    file_handler.setLevel(logging.INFO) 
-                    app.logger.addHandler(file_handler)
-
-        # Establecer nivel de log
-        app.logger.setLevel(logging.INFO if not app.debug else logging.DEBUG)
+    """Configura el sistema de logging de la aplicación."""
+    if not app.debug and not app.testing:
+        # Configuración para producción
+        if not os.path.exists('logs'):
+            os.mkdir('logs')
         
-    except Exception as e:
-        print(f"Error configurando logging: {e}")
+        file_handler = logging.FileHandler('logs/app.log')
+        file_handler.setFormatter(logging.Formatter(
+            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+        ))
+        file_handler.setLevel(logging.INFO)
+        app.logger.addHandler(file_handler)
+        app.logger.setLevel(logging.INFO)
+    else:
+        # Configuración para desarrollo
+        app.logger.setLevel(logging.DEBUG)
+
 
 def verify_critical_config(app):
-    """Verifica que la configuración crítica esté presente"""
-    try:
-        db_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
-        app.logger.info(f"SQLALCHEMY_DATABASE_URI configurada: {'Sí' if db_uri else 'No'}")
-        
-        jwt_secret = app.config.get('JWT_SECRET_KEY')
-        app.logger.info(f"JWT_SECRET_KEY configurada: {'Sí' if jwt_secret else 'No'}")
-        
-        if not jwt_secret:
-            app.logger.critical("¡JWT_SECRET_KEY NO ESTÁ CONFIGURADA! La autenticación JWT fallará.")
-            
-        if not db_uri:
-            app.logger.critical("¡SQLALCHEMY_DATABASE_URI NO ESTÁ CONFIGURADA! La base de datos no funcionará.")
-            
-    except Exception as e:
-        app.logger.error(f"Error verificando configuración: {e}", exc_info=True)
+    """Verifica que las configuraciones críticas estén presentes."""
+    critical_configs = [
+        'SECRET_KEY',
+        'SQLALCHEMY_DATABASE_URI',
+        'JWT_SECRET_KEY'
+    ]
+    
+    missing_configs = []
+    for config in critical_configs:
+        if not app.config.get(config):
+            missing_configs.append(config)
+    
+    if missing_configs:
+        error_msg = f"Configuraciones críticas faltantes: {', '.join(missing_configs)}"
+        app.logger.error(error_msg)
+        raise ValueError(error_msg)
+    
+    app.logger.info("Todas las configuraciones críticas están presentes")
+
 
 def register_blueprints(app):
-    """Registra todos los blueprints de manera segura"""
+    """Registra el blueprint principal de la API, que ya incluye todos los sub-blueprints."""
     try:
         from .routes import bp_api
         app.register_blueprint(bp_api, url_prefix='/api')
-        app.logger.info("Blueprint 'bp_api' registrado correctamente con prefijo '/api'")
-        
-        # Listar todas las rutas registradas para debugging
-        with app.app_context():
-            app.logger.info("=== RUTAS REGISTRADAS ===")
-            for rule in app.url_map.iter_rules():
-                methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
-                app.logger.info(f"{rule.endpoint:30s} {methods:20s} {rule.rule}")
-            app.logger.info("========================")
-            
+        app.logger.info("✅ Blueprint maestro 'bp_api' registrado correctamente con prefijo '/api'")
     except ImportError as e:
-        app.logger.error(f"Error CRÍTICO importando 'bp_api' desde .routes: {e}", exc_info=True)
-        app.logger.error("Asegúrate que app/routes/__init__.py exista y defina 'bp_api'")
-    except Exception as e: 
-        app.logger.error(f"Error inesperado registrando 'bp_api': {e}", exc_info=True)
+        app.logger.error(f"❌ Error al registrar el blueprint maestro bp_api: {e}")
+
+
+def register_available_blueprints(app):
+    """Registra solo los blueprints disponibles."""
+    blueprint_configs = [
+        ('auth_bp', '/api/auth'),
+        ('users_bp', '/api/users'),
+        ('providers_bp', '/api/providers'),
+        ('services_bp', '/api/services'),
+        ('appointments_bp', '/api/appointments')
+    ]
+    
+    registered_count = 0
+    
+    for blueprint_name, url_prefix in blueprint_configs:
+        try:
+            from .routes import __dict__ as routes_dict
+            if blueprint_name in routes_dict:
+                blueprint = routes_dict[blueprint_name]
+                app.register_blueprint(blueprint, url_prefix=url_prefix)
+                registered_count += 1
+                app.logger.info(f"Blueprint '{blueprint_name}' registrado en '{url_prefix}'")
+        except (ImportError, AttributeError, KeyError):
+            app.logger.warning(f"Blueprint '{blueprint_name}' no encontrado, saltando...")
+    
+    app.logger.info(f"Total de blueprints registrados: {registered_count}")
+
+
+# Función helper para usar en otros módulos
+def get_db():
+    """Retorna la instancia de la base de datos."""
+    return db

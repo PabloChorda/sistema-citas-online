@@ -2,7 +2,7 @@
 from datetime import date, datetime, time, timedelta, timezone
 from flask import current_app
 from app import db
-from app.models import AvailabilityRule, TimeBlock
+from ..models import  AvailabilityRule, TimeBlock
 
 VALID_DAYS_OF_WEEK = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO']
 PYTHON_WEEKDAY_TO_ENUM_STR = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}

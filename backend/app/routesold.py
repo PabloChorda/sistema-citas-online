@@ -1,7 +1,7 @@
 # backend/app/routes.py
 from flask import Blueprint, jsonify, request, current_app
 from . import db
-from .models import User, Provider, Service, AvailabilityRule, TimeBlock, Appointment # Todos los modelos necesarios
+from .modelsold import User, Provider, Service, AvailabilityRule, TimeBlock, Appointment # Todos los modelos necesarios
 from flask_jwt_extended import (
     create_access_token,
     jwt_required,

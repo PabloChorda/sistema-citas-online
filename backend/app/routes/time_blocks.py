@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime, time
 from app import db
-from app.models import TimeBlock, User
+from ..models import  TimeBlock, User
 
 bp = Blueprint('time_blocks', __name__)
 

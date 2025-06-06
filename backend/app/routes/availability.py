@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import time
 from app import db
-from app.models import AvailabilityRule, User
+from ..models import  AvailabilityRule, User
 from .helpers import VALID_DAYS_OF_WEEK
 
 bp = Blueprint('availability', __name__)

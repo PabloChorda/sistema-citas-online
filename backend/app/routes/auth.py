@@ -15,7 +15,7 @@ def api_test_db():
     try:
         # Importación tardía para evitar circulares
         from app import db
-        from app.models import User
+        from ..models import User
         
         user_count = User.query.count()
         current_app.logger.info(f"Test DB exitoso: {user_count} usuarios encontrados")
@@ -33,7 +33,7 @@ def register_provider():
     try:
         # Importaciones tardías para evitar problemas circulares
         from app import db
-        from app.models import User, Provider
+        from ..models import User, Provider
         
         current_app.logger.info("Iniciando registro de proveedor")
         
@@ -119,7 +119,7 @@ def register_client():
     try:
         # Importaciones tardías
         from app import db
-        from app.models import User
+        from ..models import User
         
         current_app.logger.info("Iniciando registro de cliente")
         
@@ -181,7 +181,7 @@ def login():
     """
     try:
         # Importación tardía
-        from app.models import User
+        from ..models import User
         
         current_app.logger.info("Iniciando proceso de login")
         
@@ -233,7 +233,7 @@ def protected_route_example():
     """
     try:
         # Importación tardía
-        from app.models import User
+        from ..models import User
         
         current_app.logger.info("Accediendo a ruta protegida '/protected'")
         
