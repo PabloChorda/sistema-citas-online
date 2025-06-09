@@ -36,6 +36,8 @@ class User(db.Model):
     role = db.Column(db.String(10), nullable=False, default='client', index=True) # 'client', 'provider'
     created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
     updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    is_active = db.Column(db.Boolean, default=False)
+
 
     provider_profile = db.relationship(
         'Provider',

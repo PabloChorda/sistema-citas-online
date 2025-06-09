@@ -15,10 +15,16 @@ class Config:
     DB_NAME = os.environ.get('DB_NAME')
 
     if DB_USER and DB_PASSWORD and DB_HOST and DB_PORT and DB_NAME:
-        SQLALCHEMY_DATABASE_URI = \
-            f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        SQLALCHEMY_DATABASE_URI = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     else:
         print("ADVERTENCIA: Faltan variables de entorno para PostgreSQL. Revise su archivo .env y la carga.")
-        # Puedes poner un fallback a SQLite aquí si quieres o simplemente dejar que falle
-        # si las variables no están, lo que es mejor para detectar errores.
-        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:" # ¡Solo como un fallback extremo y ruidoso!
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+
+    # 📧 Configuración para Flask-Mail (Mailhog en desarrollo)
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'mailhog')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 1025))
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', '')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
+    MAIL_USE_TLS = False
+    MAIL_USE_SSL = False
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'notificaciones@citasonline.com')
