@@ -38,4 +38,11 @@ try:
     bp_api.register_blueprint(appointments_module_bp)
     print("✅ Blueprint 'appointments' registrado correctamente")
 except ImportError as e:
+    print(f"⚠️ Warning: No se pudo importar appointments_module_bp blueprint: {e}")
+
+try:
+    from .email_service import bp as service_module_bp
+    bp_api.register_blueprint(service_module_bp)
+    print("✅ Blueprint 'appointments' registrado correctamente")
+except ImportError as e:
     print(f"⚠️ Warning: No se pudo importar appointments blueprint: {e}")
