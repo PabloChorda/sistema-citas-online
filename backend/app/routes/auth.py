@@ -178,51 +178,62 @@ def login():
     """
     POST /auth/login
     Inicia sesión de un usuario (cliente o proveedor) y genera un JWT válido.
+    Además, envía un correo de bienvenida al usuario.
     """
     try:
-        # Importación tardía
         from app.models import User
-        
+        from flask_mail import Message
+        from app import mail
+
         current_app.logger.info("Iniciando proceso de login")
-        
+
         data = request.get_json()
         if not data:
             current_app.logger.warning("No se recibieron datos JSON para login")
             return jsonify({"msg": "No se recibieron datos"}), 400
-            
+
         if not data.get('email') or not data.get('password'):
             current_app.logger.warning("Email o password faltantes en login")
             return jsonify({"msg": "Faltan email o contraseña"}), 400
 
         email = data.get('email')
         password = data.get('password')
-        
-        current_app.logger.info(f"Intentando login para: {email}")
-        
-        user = User.query.filter_by(email=email).first()
-        if not user:
-            current_app.logger.warning(f"Usuario no encontrado: {email}")
-            return jsonify({"msg": "Credenciales incorrectas"}), 401
 
-        if not user.check_password(password):
-            current_app.logger.warning(f"Contraseña incorrecta para: {email}")
+        current_app.logger.info(f"Intentando login para: {email}")
+
+        user = User.query.filter_by(email=email).first()
+        if not user or not user.check_password(password):
+            current_app.logger.warning(f"Credenciales incorrectas para: {email}")
             return jsonify({"msg": "Credenciales incorrectas"}), 401
 
         # Crear token JWT
         identity_to_store = str(user.user_id)
         access_token = create_access_token(identity=identity_to_store)
-        
-        current_app.logger.info(f"Login exitoso para {email} (ID: {user.user_id})")
-        
+
+        # Enviar correo de bienvenida
+        nombre = user.first_name or 'usuario'
+        msg = Message(
+            subject="Inicio de sesión exitoso",
+            recipients=[email],
+            body=f"Hola {nombre}, has iniciado sesión correctamente en el sistema de citas online.",
+        )
+        try:
+            mail.send(msg)
+            current_app.logger.info(f"Correo enviado a {email}")
+        except Exception as mail_error:
+            current_app.logger.error(f"Error enviando correo a {email}: {mail_error}")
+
         return jsonify({
-            "access_token": access_token, 
-            "user_id": user.user_id, 
+            "access_token": access_token,
+            "user_id": user.user_id,
             "role": user.role
         }), 200
-        
+
     except Exception as e:
         current_app.logger.error(f"Error en login: {e}", exc_info=True)
         return jsonify({"msg": "Error interno del servidor", "error_details": str(e)}), 500
+
+
 
 @bp.route('/protected', methods=['GET'])
 @jwt_required()
