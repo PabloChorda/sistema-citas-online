@@ -1,4 +1,5 @@
 import jwt
+import secrets
 from datetime import datetime, timedelta
 from flask import current_app
 
@@ -35,3 +36,10 @@ def verify_validation_token(token):
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError) as e:
         current_app.logger.warning(f"Token de validación inválido o expirado: {e}")
         return None
+
+
+
+def generate_reset_token(expiration_minutes=30):
+    token = secrets.token_urlsafe(48)
+    expiry = datetime.utcnow() + timedelta(minutes=expiration_minutes)
+    return token, expiry
