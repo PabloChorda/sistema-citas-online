@@ -7,12 +7,14 @@ import { registerUser } from '../services/authService';
 function Register() {
   const navigate = useNavigate();
 
+  // --- CORRECCIÓN ---
+  // Las claves del estado deben coincidir exactamente con el atributo "name" de cada input.
   const [form, setForm] = useState({
-    nombre: '',
-    apellidos: '',
+    first_name: '',
+    last_name: '',
     email: '',
     password: '',
-    telefono: '',
+    phone_number: '',
   });
 
   const [message, setMessage] = useState('');
@@ -24,7 +26,9 @@ function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const result = await registerUser(form);
+      // El objeto 'form' ahora tiene los nombres de campo correctos que espera el backend.
+      // ej: { first_name: "Juan", last_name: "Pérez", ... }
+      await registerUser(form); 
       setMessage('Registro exitoso. Redirigiendo al login...');
       setTimeout(() => navigate('/login'), 2000);
     } catch (error) {
@@ -42,18 +46,21 @@ function Register() {
         <h1>Crear cuenta</h1>
         <form onSubmit={handleSubmit}>
           <label>Nombre:
+            {/* El atributo name="first_name" ahora coincide con la clave del estado */}
             <input type="text" name="first_name" value={form.first_name} onChange={handleChange} required />
           </label>
           <label>Apellidos:
+            {/* El atributo name="last_name" ahora coincide con la clave del estado */}
             <input type="text" name="last_name" value={form.last_name} onChange={handleChange} required />
           </label>
           <label>Email:
             <input type="email" name="email" value={form.email} onChange={handleChange} required />
           </label>
           <label>Contraseña:
-            <input type="password" name="password" value={form.password} onChange={handleChange} required />
+            <input type="password" name="password" value={form.password} onChange={handleChange} required minLength="6"/>
           </label>
           <label>Teléfono:
+             {/* El atributo name="phone_number" ahora coincide con la clave del estado */}
             <input type="tel" name="phone_number" value={form.phone_number} onChange={handleChange} />
           </label>
           <button type="submit">Registrarse</button>
