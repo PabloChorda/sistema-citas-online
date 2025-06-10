@@ -28,31 +28,25 @@ class User(db.Model):
     __tablename__ = 'users'
 
     user_id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=False) # SG: Considerar longitud 256 o más si usas Argon2
+    email = db.Column(db.String(180), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=True)  # Puede ser null para social login
+    social_id = db.Column(db.String(255), unique=True, nullable=True)
+
     first_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=True)
-    phone_number = db.Column(db.String(20), nullable=True)
-    role = db.Column(db.String(10), nullable=False, default='client', index=True) # 'client', 'provider'
-    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
-    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    phone_number = db.Column(db.String(50), nullable=True)
+    avatar_url = db.Column(db.String(255), nullable=True)
+
+    role = db.Column(db.String(10), nullable=False, default='client', index=True)  # 'client', 'provider', 'admin'
+    email_verified = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=False)
 
+    last_login = db.Column(db.DateTime(timezone=True), nullable=True)
+    created_at = db.Column(db.DateTime(timezone=True), server_default=func.now())
+    updated_at = db.Column(db.DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    provider_profile = db.relationship(
-        'Provider',
-        backref=db.backref('user', uselist=False, lazy='joined'),
-        uselist=False,
-        cascade="all, delete-orphan"
-    )
-
-    client_appointments = db.relationship(
-        'Appointment',
-        foreign_keys='Appointment.client_id',
-        backref=db.backref('client_user', lazy='joined'),
-        lazy='dynamic', # SG: 'dynamic' es bueno si necesitas aplicar más filtros. Si no, 'select' o 'joined' pueden ser más directos.
-        cascade="all, delete-orphan"
-    )
+    reset_token = db.Column(db.String(255), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime(timezone=True), nullable=True)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -63,21 +57,21 @@ class User(db.Model):
     def __repr__(self):
         return f'<User ID {self.user_id}: {self.email} ({self.role})>'
 
-    def to_dict(self, include_profile=False): # SG: Buen método
-        data = {
+    def to_dict(self):
+        return {
             'user_id': self.user_id,
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
             'phone_number': self.phone_number,
+            'avatar_url': self.avatar_url,
             'role': self.role,
+            'email_verified': self.email_verified,
+            'is_active': self.is_active,
+            'last_login': self.last_login.isoformat() if self.last_login else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
-        if self.role == 'provider' and include_profile and self.provider_profile:
-            data['provider_profile'] = self.provider_profile.to_dict()
-        return data
-
 
 class Provider(db.Model):
     __tablename__ = 'providers'

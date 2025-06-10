@@ -46,6 +46,9 @@ function Login({ setToken, setRole }) {
         <p className="register-link">
             ¿Eres proveedor? <Link to="/register/provider">Regístrate como proveedor</Link>
         </p>
+        <p className="register-link">
+            Reestablecer Contraseña <Link to="/register/reset-password">Regístrate como proveedor</Link>
+        </p>
 
       </main>
 

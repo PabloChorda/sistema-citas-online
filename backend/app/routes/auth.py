@@ -8,6 +8,7 @@ from flask_jwt_extended import (
 )
 from .email_service import send_login_notification, send_account_validation_email
 from app.utils.tokens import generate_validation_token
+from datetime import datetime
 
 bp = Blueprint('auth', __name__)
 
@@ -207,4 +208,54 @@ def validate_account(token):
         db.session.commit()
 
     return jsonify({"msg": "Cuenta validada exitosamente."}), 200
+
+@bp.route('/forgot-password', methods=['POST'])
+def forgot_password():
+    from app import db
+    from app.models import User
+    from app.routes.email_service import send_password_reset_email
+    from app.utils.tokens import generate_reset_token
+
+    data = request.get_json()
+    email = data.get('email')
+    if not email:
+        return jsonify({"msg": "Email requerido"}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        return jsonify({"msg": "No existe un usuario con ese email"}), 404
+
+    token, expiry = generate_reset_token()
+    user.reset_token = token
+    user.reset_token_expiry = expiry
+    db.session.commit()
+
+    send_password_reset_email(user, token)
+    return jsonify({"msg": "Se ha enviado un correo para restablecer la contraseña"}), 200
+
+@bp.route('/reset-password/<token>', methods=['POST'])
+def reset_password(token):
+    from app import db
+    from app.models import User
+    from datetime import datetime
+
+    data = request.get_json()
+    new_password = data.get('password')
+
+    if not new_password:
+        return jsonify({"msg": "Nueva contraseña requerida"}), 400
+
+    user = User.query.filter_by(reset_token=token).first()
+
+    if not user or not user.reset_token_expiry or user.reset_token_expiry.replace(tzinfo=None) < datetime.utcnow():
+        return jsonify({"msg": "Token inválido o expirado"}), 400
+
+    user.set_password(new_password)
+    user.reset_token = None
+    user.reset_token_expiry = None
+    db.session.commit()
+
+    return jsonify({"msg": "Contraseña actualizada correctamente"}), 200
+
+
 

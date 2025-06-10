@@ -5,6 +5,8 @@ import './App.css';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import RegisterProvider from './pages/RegisterProvider';
+import ResetPassword from './pages/ResetPassword';
+import NewPasswordForm from './pages/NewPasswordForm';
 
 function App() {
   const [token, setToken] = useState(null);
@@ -19,6 +21,8 @@ function App() {
             <Route path="/register" element={<Register />} />
             <Route path="*" element={<Navigate to="/login" />} />
             <Route path="/register/provider" element={<RegisterProvider />} />
+            <Route path="/register/reset-password" element={<ResetPassword />} />
+            <Route path="/reset-password/:token" element={<NewPasswordForm />} />
           </>
         ) : (
           <Route
