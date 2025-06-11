@@ -44,8 +44,7 @@ def create_app(config_class_object):
      resources={r"/api/*": {"origins": ["http://localhost:5173"]}},
      supports_credentials=True,
      methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     allow_headers=["Content-Type", "Authorization"]
-)
+     allow_headers=["Content-Type", "Authorization"])
 
 
 
