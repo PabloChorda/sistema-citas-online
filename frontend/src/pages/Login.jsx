@@ -16,14 +16,31 @@ function Login({ setToken, setRole }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const data = await loginUser(email, password);
-      setToken(data.access_token);
-      setRole(data.role);
-      setMessage(`Login exitoso como ${data.role}`);
+        const data = await loginUser(email, password);
+        
+        // 1. Guardamos AMBOS datos en el almacenamiento persistente
+        localStorage.setItem('accessToken', data.access_token);
+        localStorage.setItem('userRole', data.role); // <-- Guardamos el rol también
+        
+        // 2. Actualizamos el estado de React para que la app reaccione
+        setToken(data.access_token);
+        setRole(data.role);
+        
+        setMessage(`Login exitoso como ${data.role}.`);
+        
+        // Aquí es donde deberías redirigir al usuario
+        // Por ejemplo, si es un proveedor, a su perfil.
+        if (data.role === 'provider') {
+            // navigate('/provider/profile'); // <-- Necesitarás useNavigate de react-router-dom
+        } else {
+            // navigate('/dashboard'); // O a donde vayan los clientes
+        }
+
     } catch (error) {
-      setMessage(error.message);
+        setMessage(error.message);
     }
-  };
+};
+
 
   const handleGoogleLogin = async (provider, data) => {
   try {
@@ -70,7 +87,7 @@ function Login({ setToken, setRole }) {
             ¿Eres proveedor? <Link to="/register/provider">Regístrate como proveedor</Link>
         </p>
         <p className="register-link">
-            Reestablecer Contraseña <Link to="/register/reset-password">Regístrate como proveedor</Link>
+            Reestablecer Contraseña <Link to="/register/reset-password">¿Olvidaste tu contraseña?</Link>
         </p>
 
       </main>

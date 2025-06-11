@@ -11,6 +11,15 @@ try:
     print("✅ Blueprint 'auth' registrado correctamente")
 except ImportError as e:
     print(f"❌ Error importando auth blueprint: {e}")
+
+try:
+    # Importamos el blueprint desde nuestro nuevo archivo provider.py
+    from .provider import provider_bp
+    # Lo registramos en la API con el prefijo /provider
+    bp_api.register_blueprint(provider_bp, url_prefix='/provider')
+    print("✅ Blueprint 'provider' registrado correctamente")
+except ImportError as e:
+    print(f"⚠️ Warning: No se pudo importar provider blueprint: {e}")
     
 try:
     from .services import bp as services_module_bp

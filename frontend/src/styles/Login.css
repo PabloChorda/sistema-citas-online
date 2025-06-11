@@ -158,3 +158,31 @@
     text-decoration: underline;
   }
   
+  .profile-card {
+    width: 80%; /* O el ancho que prefieras */
+    max-width: 700px;
+    margin-bottom: 25px;
+    padding: 25px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+    background-color: #ffffff;
+  }
+  
+  /* Definimos el color del texto para los elementos dentro de la tarjeta */
+  .profile-card h3 {
+    color: #4f46e5; /* Un color de acento para el título */
+    margin-bottom: 15px;
+    border-bottom: 2px solid #f1f1f1;
+    padding-bottom: 10px;
+  }
+  
+  .profile-card p {
+    color: #374151; /* Un color de texto oscuro y legible */
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  
+  .profile-card p strong {
+      color: #111827; /* Un poco más oscuro para los títulos en negrita */
+  }
