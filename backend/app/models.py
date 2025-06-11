@@ -123,6 +123,13 @@ class Provider(db.Model):
         onupdate=func.now()
     )
 
+
+    # Esto crea el atributo 'provider.user' que permite acceder al objeto User.
+    # El backref crea 'user.provider_profile' para el camino inverso.
+    # Añadimos 'foreign_keys' para resolver la ambigüedad
+    user = db.relationship('User', foreign_keys=[user_id], backref=db.backref('provider_profile', uselist=False, lazy='joined'))
+
+
   # Relación a Establishment (ya existente)
     establishments = db.relationship(
         'Establishment',

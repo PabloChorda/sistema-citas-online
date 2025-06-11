@@ -26,26 +26,27 @@ def api_test_db():
 
 @bp.route('/register/provider', methods=['POST'])
 def register_provider():
+    data = request.get_json()
+    if not data:
+        return jsonify({"msg": "No se recibieron datos (payload vacío)"}), 400
+
+    required_fields = ['email', 'password', 'nombre_comercial', 'cif', 'first_name']
+    missing_fields = [field for field in required_fields if not data.get(field)]
+    if missing_fields:
+        return jsonify({"msg": f"Faltan datos requeridos: {', '.join(missing_fields)}"}), 400
+
+    from app import db
+    from app.models import User, Provider
+
+    email = data.get('email')
+    if User.query.filter_by(email=email).first():
+        return jsonify({"msg": "El email ya está registrado"}), 409
+    
+    cif = data.get('cif')
+    if Provider.query.filter_by(cif=cif).first():
+        return jsonify({"msg": "El CIF ya está registrado"}), 409
+
     try:
-        from app import db
-        from app.models import User, Provider
-
-        data = request.get_json()
-        if not data:
-            return jsonify({"msg": "No se recibieron datos"}), 400
-
-        required_fields = ['email', 'password', 'business_name']
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        if missing_fields:
-            return jsonify({"msg": f"Faltan datos requeridos: {', '.join(missing_fields)}"}), 400
-
-        email = data.get('email')
-        password = data.get('password')
-        business_name = data.get('business_name')
-
-        if User.query.filter_by(email=email).first():
-            return jsonify({"msg": "El email ya está registrado"}), 409
-
         new_user = User(
             email=email,
             role='provider',
@@ -53,20 +54,30 @@ def register_provider():
             last_name=data.get('last_name'),
             phone_number=data.get('phone_number')
         )
-        new_user.set_password(password)
-
+        new_user.set_password(data.get('password'))
+        
         db.session.add(new_user)
+        
+        # Hacemos un "flush" para enviar el usuario a la BD y obtener su ID generado,
+        # sin confirmar la transacción todavía.
         db.session.flush()
 
+        # Ahora que new_user.user_id tiene un valor, lo usamos para la clave primaria de Provider.
         new_provider_profile = Provider(
-            provider_id=new_user.user_id,
-            business_name=business_name,
-            business_type=data.get('business_type', 'default_type'),
-            timezone=data.get('timezone', 'UTC'),
-            address=data.get('address'),
-            bio=data.get('bio')
+            provider_id=new_user.user_id,  # Asignamos explícitamente la Clave Primaria
+            user=new_user,                 # Mantenemos la asignación del objeto para la relación
+            nombre_comercial=data.get('nombre_comercial'),
+            cif=cif,
+            tipo_empresa=data.get('tipo_empresa'),
+            bio=data.get('bio'),
+            telefono_contacto=data.get('telefono_contacto'),
+            email_contacto=data.get('email_contacto'),
+            web=data.get('web'),
+            timezone=data.get('timezone', 'Europe/Madrid'),
+            idiomas_hablados=data.get('idiomas_hablados'),
+            direccion_fiscal=data.get('direccion_fiscal')
         )
-
+        
         db.session.add(new_provider_profile)
         db.session.commit()
 
