@@ -1,8 +1,12 @@
 // src/pages/Login.jsx
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { loginUser } from '../services/authService';
+import { loginUser, loginWithGoogle } from '../services/authService';
 import '../styles/Login.css';
+import GoogleLoginComponent from './GoogleLoginComponent';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+
+const GOOGLE_CLIENT_ID = "618642945850-i4rekbfl4g49760m2jb11rocvnf29ji4.apps.googleusercontent.com";
 
 function Login({ setToken, setRole }) {
   const [email, setEmail] = useState('');
@@ -20,6 +24,19 @@ function Login({ setToken, setRole }) {
       setMessage(error.message);
     }
   };
+
+  const handleGoogleLogin = async (provider, data) => {
+  try {
+    const result = await loginWithGoogle(data);
+    setToken(result.access_token);
+    setRole(result.role);
+    setMessage(`Login exitoso como ${result.role}`);
+  } catch (error) {
+    console.error(error);
+    setMessage(error.message);
+  }
+};
+
 
   return (
     <div className="page-wrapper">
@@ -39,6 +56,12 @@ function Login({ setToken, setRole }) {
           <button type="submit">Iniciar sesión</button>
         </form>
         {message && <p className="login-message">{message}</p>}
+
+        <div style={{ marginTop: '20px' }}>
+          <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+            <GoogleLoginComponent onLogin={handleGoogleLogin} />
+          </GoogleOAuthProvider>
+        </div>
 
         <p className="register-link">
           ¿No tienes una cuenta? <Link to="/register">Regístrate aquí</Link>
