@@ -8,6 +8,7 @@ import RegisterProvider from './pages/RegisterProvider';
 import ResetPassword from './pages/ResetPassword';
 import NewPasswordForm from './pages/NewPasswordForm';
 import CreateEstablishment from './pages/CreateEstablishment';
+import DashboardProveedor from './pages/DashboardProveedor';
 
 function App() {
   const [token, setToken] = useState(null);
@@ -25,6 +26,7 @@ function App() {
             <Route path="/register/reset-password" element={<ResetPassword />} />
             <Route path="/reset-password/:token" element={<NewPasswordForm />} />
             <Route path="/create-establishment" element={<CreateEstablishment />} />
+            <Route path="/dashboard-provider" element={<DashboardProveedor />} />
           </>
         ) : (
           <Route
