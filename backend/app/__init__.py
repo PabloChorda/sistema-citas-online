@@ -40,8 +40,14 @@ def create_app(config_class_object):
     mail.init_app(app)
 
 
-    # Configuración CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+    CORS(app,
+     resources={r"/api/*": {"origins": ["http://localhost:5173"]}},
+     supports_credentials=True,
+     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+     allow_headers=["Content-Type", "Authorization"]
+)
+
+
 
     # Importar modelos aquí para que SQLAlchemy los conozca
     try:

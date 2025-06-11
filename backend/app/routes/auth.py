@@ -9,6 +9,12 @@ from flask_jwt_extended import (
 from .email_service import send_login_notification, send_account_validation_email
 from app.utils.tokens import generate_validation_token
 from datetime import datetime
+from app import db
+from app.models import User
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from flask_cors import cross_origin
+
 
 bp = Blueprint('auth', __name__)
 
@@ -267,6 +273,67 @@ def reset_password(token):
     db.session.commit()
 
     return jsonify({"msg": "Contraseña actualizada correctamente"}), 200
+
+@bp.route('/oauth/google', methods=['POST'])
+@cross_origin(origins="http://localhost:5173", supports_credentials=True)
+def google_oauth_login():
+
+    try:
+        data = request.get_json()
+        token = data.get('token')
+
+        if not token:
+            return jsonify({"msg": "Token requerido"}), 400
+
+        # Verificar el token con Google
+        idinfo = id_token.verify_oauth2_token(token, requests.Request())
+
+        # Validar que venga de una cuenta de Google
+        if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+            return jsonify({"msg": "Emisor no válido"}), 400
+
+        email = idinfo.get('email')
+        first_name = idinfo.get('given_name', '')
+        last_name = idinfo.get('family_name', '')
+        picture = idinfo.get('picture', '')
+
+        if not email:
+            return jsonify({"msg": "No se pudo obtener el email del token"}), 400
+
+        # Buscar usuario existente
+        user = User.query.filter_by(email=email).first()
+
+        # Si no existe, lo creamos
+        if not user:
+            user = User(
+                email=email,
+                role='client',
+                first_name=first_name,
+                last_name=last_name,
+                avatar_url=picture,
+                email_verified=True,
+                is_active=True,
+                social_id=idinfo.get('sub')  # ID único de Google
+            )
+            db.session.add(user)
+            db.session.commit()
+
+        # Crear token JWT para nuestra app
+        access_token = create_access_token(identity=str(user.user_id))
+        send_login_notification(user)
+
+        return jsonify({
+            "access_token": access_token,
+            "user_id": user.user_id,
+            "role": user.role
+        }), 200
+
+    except ValueError as e:
+        current_app.logger.error(f"Token inválido de Google: {e}")
+        return jsonify({"msg": "Token inválido"}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error en login social: {e}", exc_info=True)
+        return jsonify({"msg": "Error en login social", "error": str(e)}), 500
 
 
 
