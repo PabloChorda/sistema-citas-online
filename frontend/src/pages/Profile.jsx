@@ -1,3 +1,5 @@
+// src/pages/Profile.jsx
+
 import { useEffect, useState } from 'react'
 
 function Profile() {
@@ -6,14 +8,27 @@ function Profile() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('jwtToken')
+    const token = localStorage.getItem('accessToken')
+    const role = localStorage.getItem('userRole')
+
     if (!token) {
       setError('No hay token de autenticación')
       setLoading(false)
       return
     }
 
-    fetch('http://localhost:5001/api/auth/profile', {
+    let endpoint = ''
+    if (role === 'provider') {
+      endpoint = 'http://localhost:5001/api/provider/profile'
+    } else if (role === 'client') {
+      endpoint = 'http://localhost:5001/api/client/profile'
+    } else {
+      setError('Rol no reconocido')
+      setLoading(false)
+      return
+    }
+
+    fetch(endpoint, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -39,9 +54,9 @@ function Profile() {
     <div className="profile-container">
       <h1>Perfil del Usuario</h1>
       <p><strong>ID:</strong> {user.user_id}</p>
-      <p><strong>Nombre:</strong> {user.name}</p>
+      <p><strong>Nombre:</strong> {user.first_name || user.name}</p>
       <p><strong>Email:</strong> {user.email}</p>
-      <p><strong>Rol:</strong> {user.role}</p>
+      <p><strong>Rol:</strong> {localStorage.getItem('userRole')}</p>
     </div>
   )
 }

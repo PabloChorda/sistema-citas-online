@@ -5,6 +5,7 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const role = localStorage.getItem('userRole'); // Obtener el rol del usuario
 
   const onLogoutClick = () => {
     handleLogout();
@@ -28,30 +29,27 @@ export default function DashboardLayout({ handleLogout }) {
   };
 
   return (
-    // 1. Contenedor exterior: Ocupa toda la pantalla y centra el panel principal.
     <div style={{
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
       height: '100vh',
-      background: 'linear-gradient(to right, #667eea, #764ba2)' // Fondo degradado como en el login
+      background: 'linear-gradient(to right, #667eea, #764ba2)'
     }}>
       
-      {/* 2. Panel principal: tiene un tamaño máximo y un borde redondeado. */}
       <div style={{
         display: 'flex',
-        height: '90vh',         // Ocupa el 90% del alto de la ventana
-        maxHeight: '800px',     // Pero nunca más de 800px
-        width: '90%',           // Ocupa el 90% del ancho
-        maxWidth: '1280px',     // Pero nunca más de 1280px
+        height: '90vh',
+        maxHeight: '800px',
+        width: '90%',
+        maxWidth: '1280px',
         fontFamily: 'sans-serif',
         boxSizing: 'border-box',
         boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)',
         borderRadius: '10px',
-        overflow: 'hidden' // Esconde cualquier cosa que se desborde
+        overflow: 'hidden'
       }}>
         
-        {/* --- Barra Lateral de Navegación --- */}
         <aside style={{ 
           width: '220px',
           flexShrink: 0,
@@ -71,7 +69,12 @@ export default function DashboardLayout({ handleLogout }) {
                 <Link to="/" style={getLinkStyle('/')}>Inicio</Link>
               </li>
               <li style={{ marginBottom: '8px' }}>
-                <Link to="/provider/profile" style={getLinkStyle('/provider/profile')}>Mi Perfil</Link>
+                <Link 
+                  to={role === 'provider' ? '/provider/profile' : '/profile'}
+                  style={getLinkStyle(role === 'provider' ? '/provider/profile' : '/profile')}
+                >
+                  Mi Perfil
+                </Link>
               </li>
             </ul>
           </nav>
@@ -95,7 +98,6 @@ export default function DashboardLayout({ handleLogout }) {
           </div>
         </aside>
 
-        {/* --- Área de Contenido Principal --- */}
         <main style={{ 
           flexGrow: 1,
           padding: '30px',

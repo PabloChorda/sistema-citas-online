@@ -1,6 +1,6 @@
 // src/pages/Login.jsx
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { loginUser, loginWithGoogle } from '../services/authService';
 import '../styles/Login.css';
 import GoogleLoginComponent from './GoogleLoginComponent';
@@ -9,6 +9,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 const GOOGLE_CLIENT_ID = "618642945850-i4rekbfl4g49760m2jb11rocvnf29ji4.apps.googleusercontent.com";
 
 function Login({ setToken, setRole }) {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
@@ -16,44 +17,55 @@ function Login({ setToken, setRole }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-        const data = await loginUser(email, password);
-        
-        // 1. Guardamos AMBOS datos en el almacenamiento persistente
-        localStorage.setItem('accessToken', data.access_token);
-        localStorage.setItem('userRole', data.role); // <-- Guardamos el rol también
-        
-        // 2. Actualizamos el estado de React para que la app reaccione
-        setToken(data.access_token);
-        setRole(data.role);
-        
-        setMessage(`Login exitoso como ${data.role}.`);
-        
-        // Aquí es donde deberías redirigir al usuario
-        // Por ejemplo, si es un proveedor, a su perfil.
-        if (data.role === 'provider') {
-            // navigate('/provider/profile'); // <-- Necesitarás useNavigate de react-router-dom
-        } else {
-            // navigate('/dashboard'); // O a donde vayan los clientes
-        }
+      const data = await loginUser(email, password);
+  
+      localStorage.setItem('accessToken', data.access_token);
+      localStorage.setItem('userRole', data.role);
+  
+      setToken(data.access_token);
+      setRole(data.role);
+      setMessage(`Login exitoso como ${data.role}.`);
+
+      if (data.role === 'provider') {
+        navigate('/provider/profile');
+      } else {
+        navigate('/profile');
+      }
 
     } catch (error) {
-        setMessage(error.message);
+      setMessage(error.message);
     }
-};
-
+  };
 
   const handleGoogleLogin = async (provider, data) => {
-  try {
-    const result = await loginWithGoogle(data);
-    setToken(result.access_token);
-    setRole(result.role);
-    setMessage(`Login exitoso como ${result.role}`);
-  } catch (error) {
-    console.error(error);
-    setMessage(error.message);
-  }
-};
+    try {
+      const result = await loginWithGoogle(data);
 
+      localStorage.setItem('accessToken', result.access_token);
+      localStorage.setItem('userRole', result.role);
+
+      console.log("Token guardado en localStorage:", localStorage.getItem('accessToken'));
+      console.log("Rol guardado:", localStorage.getItem('userRole'));
+
+      setToken(result.access_token);
+      setRole(result.role);
+
+      window.location.reload();
+
+
+      setMessage(`Login exitoso como ${result.role}`);
+
+      if (result.role === 'provider') {
+        navigate('/provider/profile');
+      } else {
+        navigate('/profile');
+      }
+
+    } catch (error) {
+      console.error(error);
+      setMessage(error.message);
+    }
+  };
 
   return (
     <div className="page-wrapper">
@@ -72,6 +84,7 @@ function Login({ setToken, setRole }) {
           </label>
           <button type="submit">Iniciar sesión</button>
         </form>
+
         {message && <p className="login-message">{message}</p>}
 
         <div style={{ marginTop: '20px' }}>
@@ -84,12 +97,11 @@ function Login({ setToken, setRole }) {
           ¿No tienes una cuenta? <Link to="/register">Regístrate aquí</Link>
         </p>
         <p className="register-link">
-            ¿Eres proveedor? <Link to="/register/provider">Regístrate como proveedor</Link>
+          ¿Eres proveedor? <Link to="/register/provider">Regístrate como proveedor</Link>
         </p>
         <p className="register-link">
-            Reestablecer Contraseña <Link to="/register/reset-password">¿Olvidaste tu contraseña?</Link>
+          Reestablecer Contraseña <Link to="/register/reset-password">¿Olvidaste tu contraseña?</Link>
         </p>
-
       </main>
 
       <footer className="login-footer">
