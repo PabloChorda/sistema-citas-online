@@ -1,54 +1,115 @@
 // src/services/authService.js
+
+const BASE_URL = 'http://localhost:5001/api/auth';
+
+// Iniciar sesión
 export async function loginUser(email, password) {
-    const response = await fetch('http://localhost:5001/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    });
-  
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.msg || 'Error al iniciar sesión');
-    }
-  
-    return data;
+  const response = await fetch(`${BASE_URL}/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.msg || 'Error al iniciar sesión');
   }
 
+  return data;
+}
 
-  // src/services/authService.js
-
+// Registro de cliente
 export async function registerUser(userData) {
-    const response = await fetch('http://localhost:5001/api/auth/register/client', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData),
-    });
-  
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error al registrar');
-    }
-  
-    return await response.json();
+  const response = await fetch(`${BASE_URL}/register/client`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(userData),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.msg || 'Error al registrar cliente');
   }
 
+  return data;
+}
 
-  // src/services/authService.js
-
+// Registro de proveedor
 export async function registerProvider(providerData) {
-    const response = await fetch('http://localhost:5001/api/auth/register/provider', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(providerData),
-    });
-  
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Error al registrar proveedor');
-    }
-  
-    return await response.json();
+  const response = await fetch(`${BASE_URL}/register/provider`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(providerData),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.msg || 'Error al registrar proveedor');
   }
-  
-  
-  
+
+  return data;
+}
+
+// Validar cuenta (GET /validate/:token)
+export async function validateAccount(token) {
+  const response = await fetch(`${BASE_URL}/validate/${token}`, {
+    method: 'GET',
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.msg || 'Error al validar cuenta');
+  }
+
+  return data;
+}
+
+// Solicitar restablecimiento de contraseña (POST /forgot-password)
+export async function requestPasswordReset(email) {
+  const response = await fetch(`${BASE_URL}/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.msg || 'Error al solicitar restablecimiento');
+  }
+
+  return data;
+}
+
+// Restablecer contraseña (POST /reset-password/:token)
+export async function resetPasswordWithToken(token, password) {
+  const response = await fetch(`${BASE_URL}/reset-password/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.msg || 'Error al restablecer contraseña');
+  }
+
+  return data;
+}
+
+// Login con Google OAuth
+export async function loginWithGoogle(token) {
+  console.log("ENTRO")
+  const response = await fetch(`${BASE_URL}/oauth/google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.msg || 'Error autenticando con Google');
+  }
+
+  return data;
+}
+

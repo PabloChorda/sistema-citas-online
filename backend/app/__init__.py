@@ -6,11 +6,14 @@ from flask_migrate import Migrate
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 import logging
+from flask_mail import Mail
+
 
 # Inicializar extensiones globalmente pero configurarlas en create_app
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
+mail = Mail()
 
 def create_app(config_class_object):
     """
@@ -34,9 +37,17 @@ def create_app(config_class_object):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+    mail.init_app(app)
 
-    # Configuración CORS
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+    CORS(app,
+     resources={r"/api/*": {"origins": ["http://localhost:5173"]}},
+     supports_credentials=True,
+     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
+     allow_headers=["Content-Type", "Authorization"]
+)
+
+
 
     # Importar modelos AL NIVEL SUPERIOR para evitar warnings de Pylint
     # Esto asegura que SQLAlchemy registre todos los modelos
