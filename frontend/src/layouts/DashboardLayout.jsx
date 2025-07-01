@@ -1,25 +1,29 @@
 // frontend/src/layouts/DashboardLayout.jsx
+
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Leemos el rol DENTRO del componente.
+  // Así, cada vez que el layout se renderiza, obtiene el valor actualizado.
+  const userRole = localStorage.getItem('userRole');
+
   const onLogoutClick = () => {
     handleLogout();
     navigate('/login');
   };
 
-  // Función para determinar el estilo del enlace activo
   const getLinkStyle = (path) => ({
     color: '#e2e8f0',
     textDecoration: 'none',
     fontSize: '15px',
     display: 'block',
     padding: '10px 15px',
-    borderRadius: '6px',
+    borderRadius: '8px',
     transition: 'background-color 0.2s ease-in-out',
-    backgroundColor: location.pathname === path ? '#2d3748' : 'transparent',
+    backgroundColor: location.pathname === path ? '#374151' : 'transparent',
   });
 
   return (
@@ -30,8 +34,14 @@ export default function DashboardLayout({ handleLogout }) {
           <nav className="sidebar-nav">
             <ul>
               <li><Link to="/" style={getLinkStyle('/')}>Inicio</Link></li>
-              <li><Link to="/provider/profile" style={getLinkStyle('/provider/profile')}>Mi Perfil</Link></li>
-              {/* Aquí irían más enlaces para proveedores */}
+
+              {/* Ahora este menú condicional funcionará correctamente */}
+              {userRole === 'provider' && (
+                <li><Link to="/provider/profile" style={getLinkStyle('/provider/profile')}>Mi Perfil</Link></li>
+              )}
+              {userRole === 'client' && (
+                <li><Link to="/client/profile" style={getLinkStyle('/client/profile')}>Mi Perfil</Link></li>
+              )}
             </ul>
           </nav>
           <div className="sidebar-footer">
