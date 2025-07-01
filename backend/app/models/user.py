@@ -59,7 +59,10 @@ class User(BaseModel):
 class Provider(BaseModel):
     __tablename__ = 'providers'
 
+    # provider_id es A LA VEZ la Clave Primaria y la Clave Foránea.
+    # Esto crea una relación 1 a 1 perfecta.
     provider_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='CASCADE'), primary_key=True)
+
     nombre_comercial = db.Column(db.String(255), nullable=False)
     cif = db.Column(db.String(20), nullable=False, unique=True, index=True)
     tipo_empresa = db.Column(db.String(100), nullable=True)
@@ -97,7 +100,7 @@ class Provider(BaseModel):
         user_info = self.user.to_dict() if self.user else {}
         return {
             'provider_id': self.provider_id,
-            'user_id': self.provider_id,
+            'user_id': self.provider_id, # Es el mismo valor
             'email': user_info.get('email'),
             'first_name': user_info.get('first_name'),
             'last_name': user_info.get('last_name'),

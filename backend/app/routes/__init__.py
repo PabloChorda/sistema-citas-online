@@ -5,13 +5,22 @@ from flask import Blueprint
 bp_api = Blueprint('api', __name__)
 
 # Importaciones tardías para evitar problemas circulares
+# Se envuelven en try-except para dar logs más claros si un módulo falla.
+
 try:
     from .auth import bp as auth_module_bp
     bp_api.register_blueprint(auth_module_bp, url_prefix='/auth')
     print("✅ Blueprint 'auth' registrado correctamente")
 except ImportError as e:
     print(f"❌ Error importando auth blueprint: {e}")
-    
+
+try:
+    from .provider import provider_bp
+    bp_api.register_blueprint(provider_bp, url_prefix='/provider')
+    print("✅ Blueprint 'provider' registrado correctamente")
+except ImportError as e:
+    print(f"❌ Error importando provider blueprint: {e}")
+
 try:
     from .services import bp as services_module_bp
     bp_api.register_blueprint(services_module_bp, url_prefix='/services')
@@ -43,6 +52,6 @@ except ImportError as e:
 try:
     from .email_service import bp as service_module_bp
     bp_api.register_blueprint(service_module_bp)
-    print("✅ Blueprint 'appointments' registrado correctamente")
+    print("✅ Blueprint 'email_service' registrado correctamente")
 except ImportError as e:
-    print(f"⚠️ Warning: No se pudo importar appointments blueprint: {e}")
+    print(f"⚠️ Warning: No se pudo importar email_service blueprint: {e}")
