@@ -98,6 +98,16 @@ class Provider(BaseModel):
 
     def to_dict(self):
         user_info = self.user.to_dict() if self.user else {}
+        
+        # --- LÓGICA PARA INCLUIR LOS ESTABLECIMIENTOS ---
+        # Usamos un try-except por si un establecimiento no tuviera el método to_dict()
+        try:
+            # La relación 'establishments' es lazy='dynamic', por lo que necesitamos .all()
+            establishments_list = [est.to_dict() for est in self.establishments.all()]
+        except Exception:
+            # Si hay algún problema, simplemente devolvemos una lista vacía
+            establishments_list = []
+
         return {
             'provider_id': self.provider_id,
             'user_id': self.provider_id, # Es el mismo valor
@@ -117,5 +127,9 @@ class Provider(BaseModel):
             'timezone': self.timezone,
             'idiomas_hablados': self.idiomas_hablados,
             'direccion_fiscal': self.direccion_fiscal,
+            
+            # --- CAMBIO PRINCIPAL: AÑADIMOS LA LISTA DE ESTABLECIMIENTOS ---
+            'establishments': establishments_list,
+
             **self.to_dict_base()
         }

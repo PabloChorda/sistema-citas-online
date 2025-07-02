@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import './styles/Login.css'; // Asegúrate de que la ruta a tu CSS sea correcta
+import './styles/Login.css';
 
 // Layouts y Páginas
 import DashboardLayout from './layouts/DashboardLayout.jsx';
@@ -12,19 +12,18 @@ import RegisterProvider from './pages/RegisterProvider';
 import ResetPassword from './pages/ResetPassword';
 import NewPasswordForm from './pages/NewPasswordForm';
 import ProviderProfile from './pages/ProviderProfile';
-import ClientProfile from './pages/ClientProfile'; // <-- 1. Importamos la nueva página
+import ClientProfile from './pages/ClientProfile';
+import ManageServices from './pages/ManageServices';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
   const [role, setRole] = useState(localStorage.getItem('userRole'));
 
   useEffect(() => {
-    // Sincroniza el estado de React si el localStorage cambia (ej: en otra pestaña)
     const handleStorageChange = () => {
       setToken(localStorage.getItem('accessToken'));
       setRole(localStorage.getItem('userRole'));
     };
-
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
@@ -47,32 +46,37 @@ function App() {
     <Router>
       <Routes>
         {!token ? (
-          // --- RUTAS PÚBLICAS (cuando no hay token) ---
+          // --- RUTAS PÚBLICAS ---
           <>
             <Route path="/login" element={<Login onLogin={handleLogin} />} />
             <Route path="/register" element={<Register />} />
             <Route path="/register/provider" element={<RegisterProvider />} />
             <Route path="/reset-password/:token" element={<NewPasswordForm />} />
             <Route path="/register/reset-password" element={<ResetPassword />} />
-            {/* Cualquier otra ruta redirige al login si no se está autenticado */}
             <Route path="*" element={<Navigate to="/login" />} />
           </>
         ) : (
-          // --- RUTAS PRIVADAS (cuando SÍ hay token) ---
-          // Todas las rutas privadas están dentro del DashboardLayout
+          // --- RUTAS PRIVADAS ---
+          // Usamos una única ruta padre para el DashboardLayout
           <Route path="/" element={<DashboardLayout handleLogout={handleLogout} />}>
+            
+            {/* La página de bienvenida es la ruta "index" del dashboard */}
             <Route index element={<WelcomeDashboard />} />
-            
-            {/* --- RUTAS CONDICIONALES POR ROL --- */}
+
+            {/* Renderizamos las rutas del proveedor SOLO si el rol coincide */}
             {role === 'provider' && (
-              <Route path="provider/profile" element={<ProviderProfile />} />
+              <>
+                <Route path="provider/profile" element={<ProviderProfile />} />
+                <Route path="provider/services" element={<ManageServices />} />
+              </>
             )}
-            
+
+            {/* Renderizamos las rutas del cliente SOLO si el rol coincide */}
             {role === 'client' && (
-              <Route path="client/profile" element={<ClientProfile />} /> // <-- 2. Añadimos la ruta para el perfil de cliente
+              <Route path="client/profile" element={<ClientProfile />} />
             )}
             
-            {/* Si un usuario logueado va a una ruta no definida, se muestra este 404 */}
+            {/* La ruta comodín debe estar al final, dentro del layout */}
             <Route path="*" element={<NotFoundDashboard />} />
           </Route>
         )}
@@ -81,17 +85,16 @@ function App() {
   );
 }
 
-// Componente para la página de bienvenida del dashboard
+// ... (tus componentes WelcomeDashboard y NotFoundDashboard se quedan igual) ...
 const WelcomeDashboard = () => (
-  <div className="page-wrapper">
-    <header className="page-header">
-        <h1>Bienvenido a tu Panel de Control</h1>
-        <p>Usa el menú de la izquierda para navegar por las diferentes secciones.</p>
-    </header>
-  </div>
+    <div className="page-wrapper">
+        <header className="page-header">
+            <h1>Bienvenido a tu Panel de Control</h1>
+            <p>Usa el menú de la izquierda para navegar por las diferentes secciones.</p>
+        </header>
+    </div>
 );
 
-// Componente para la página 404 dentro del dashboard
 const NotFoundDashboard = () => (
     <div className="page-wrapper" style={{ textAlign: 'center', paddingTop: '5rem' }}>
         <header className="page-header">
@@ -100,6 +103,5 @@ const NotFoundDashboard = () => (
         </header>
     </div>
 );
-
 
 export default App;

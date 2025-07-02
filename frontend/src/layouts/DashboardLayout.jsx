@@ -1,13 +1,12 @@
 // frontend/src/layouts/DashboardLayout.jsx
 
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
+// Opcional: Si quieres usar iconos, como en mi ejemplo anterior.
+// import { WrenchScrewdriverIcon, UserIcon, HomeIcon } from '@heroicons/react/24/outline';
 
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Leemos el rol DENTRO del componente.
-  // Así, cada vez que el layout se renderiza, obtiene el valor actualizado.
   const userRole = localStorage.getItem('userRole');
 
   const onLogoutClick = () => {
@@ -23,8 +22,42 @@ export default function DashboardLayout({ handleLogout }) {
     padding: '10px 15px',
     borderRadius: '8px',
     transition: 'background-color 0.2s ease-in-out',
-    backgroundColor: location.pathname === path ? '#374151' : 'transparent',
+    backgroundColor: location.pathname.startsWith(path) && path !== '/' ? '#374151' : location.pathname === path ? '#374151' : 'transparent',
   });
+
+  // --- Mejoramos la lógica de renderizado de enlaces ---
+  const renderNavLinks = () => {
+    if (userRole === 'provider') {
+      return (
+        <>
+          <li>
+            <Link to="/provider/profile" style={getLinkStyle('/provider/profile')}>
+              Mi Perfil
+            </Link>
+          </li>
+          {/* --- ENLACE NUEVO AÑADIDO AQUÍ --- */}
+          <li>
+            <Link to="/provider/services" style={getLinkStyle('/provider/services')}>
+              Servicios
+            </Link>
+          </li>
+        </>
+      );
+    }
+    
+    if (userRole === 'client') {
+      return (
+        <li>
+          <Link to="/client/profile" style={getLinkStyle('/client/profile')}>
+            Mi Perfil
+          </Link>
+        </li>
+      );
+    }
+
+    // Retorna null o un menú por defecto si no hay un rol específico
+    return null;
+  };
 
   return (
     <div className="dashboard-container">
@@ -33,15 +66,13 @@ export default function DashboardLayout({ handleLogout }) {
           <h2 className="sidebar-brand">CitaFácil</h2>
           <nav className="sidebar-nav">
             <ul>
-              <li><Link to="/" style={getLinkStyle('/')}>Inicio</Link></li>
-
-              {/* Ahora este menú condicional funcionará correctamente */}
-              {userRole === 'provider' && (
-                <li><Link to="/provider/profile" style={getLinkStyle('/provider/profile')}>Mi Perfil</Link></li>
-              )}
-              {userRole === 'client' && (
-                <li><Link to="/client/profile" style={getLinkStyle('/client/profile')}>Mi Perfil</Link></li>
-              )}
+              <li>
+                <Link to="/" style={getLinkStyle('/')}>
+                  Inicio
+                </Link>
+              </li>
+              {/* Llamamos a la función que renderiza los enlaces según el rol */}
+              {renderNavLinks()}
             </ul>
           </nav>
           <div className="sidebar-footer">

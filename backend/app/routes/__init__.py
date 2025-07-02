@@ -29,11 +29,11 @@ except ImportError as e:
     print(f"❌ Error importando client blueprint: {e}")
 
 try:
-    from .services import bp as services_module_bp
-    bp_api.register_blueprint(services_module_bp, url_prefix='/services')
-    print("✅ Blueprint 'services' registrado correctamente")
+    from .service import service_bp
+    bp_api.register_blueprint(service_bp)
+    print("✅ Blueprint 'service' registrado correctamente")
 except ImportError as e:
-    print(f"⚠️ Warning: No se pudo importar services blueprint: {e}")
+    print(f"⚠️ Warning: No se pudo importar service blueprint: {e}")
     
 try:
     from .availability import bp as availability_module_bp

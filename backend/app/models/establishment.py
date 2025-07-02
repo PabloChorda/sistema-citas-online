@@ -57,6 +57,19 @@ class Establishment(BaseModel):
 
     def __repr__(self):
         return f'<Establishment ID {self.id}: {self.nombre} (Provider ID: {self.provider_id})>'
+    
+        # --- MÉTODO to_dict() AÑADIDO ---
+    def to_dict(self):
+        """Serializa el objeto Establishment a un diccionario."""
+        return {
+            'id': self.id,
+            'provider_id': self.provider_id,
+            'nombre': self.nombre,
+            'direccion_completa': self.direccion_completa,
+            'activo': self.activo,
+            # Añade cualquier otro campo que quieras que esté disponible en el frontend
+            **self.to_dict_base() # Incluye created_at y updated_at
+        }
 
 class Staff(BaseModel):
     __tablename__ = 'staff'
