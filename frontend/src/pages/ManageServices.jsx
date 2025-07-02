@@ -1,6 +1,7 @@
 // frontend/src/pages/ManageServices.jsx
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, Link } from 'react-router-dom';
 
 // Componentes
 import ServiceList from '../components/provider/ServiceList';
@@ -9,62 +10,40 @@ import AddServiceButton from '../components/provider/AddServiceButton';
 
 // Servicios de API
 import { getServicesByEstablishment, createService, updateService, deleteService } from '../services/serviceService';
-import { getProviderProfile } from '../services/providerService';
 
 const ManageServices = () => {
   const [services, setServices] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // Estado para guardar el establecimiento que se está gestionando
-  const [selectedEstablishment, setSelectedEstablishment] = useState(null);
-  
+  const [searchParams] = useSearchParams();
+  const establishmentId = searchParams.get('est_id');
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [serviceToEdit, setServiceToEdit] = useState(null);
 
-  // Función para cargar los servicios del establecimiento seleccionado
-  const fetchServices = useCallback(async () => {
-    if (!selectedEstablishment) return; // No hacer nada si no hay establecimiento
-
-    try {
-      setLoading(true);
-      const response = await getServicesByEstablishment(selectedEstablishment.id);
-      setServices(response.data);
-      setError(null);
-    } catch (err) {
-      setError('No se pudieron cargar los servicios para este establecimiento.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEstablishment]); // Depende del establecimiento seleccionado
-
-  // Primer useEffect: se ejecuta una vez para obtener el perfil y los establecimientos
   useEffect(() => {
-    const loadProviderData = async () => {
+    if (!establishmentId) {
+      setServices([]);
+      return;
+    }
+
+    const fetchServicesForId = async () => {
       try {
-        const profileData = await getProviderProfile();
-        if (profileData && profileData.establishments && profileData.establishments.length > 0) {
-          // Si el proveedor tiene establecimientos, seleccionamos el primero por defecto
-          setSelectedEstablishment(profileData.establishments[0]);
-        } else {
-          setError('No tienes ningún establecimiento registrado. Añade uno para poder gestionar servicios.');
-          setLoading(false);
-        }
+        setLoading(true);
+        const servicesData = await getServicesByEstablishment(establishmentId);
+        setServices(servicesData || []);
+        setError(null);
       } catch (err) {
-        setError('No se pudo cargar la información del proveedor.');
-        setLoading(false);
+        setError('No se pudieron cargar los servicios para este establecimiento.');
         console.error(err);
+      } finally {
+        setLoading(false);
       }
     };
     
-    loadProviderData();
-  }, []); // El array vacío [] asegura que se ejecute solo al montar el componente
-
-  // Segundo useEffect: se ejecuta cada vez que el establecimiento seleccionado cambia
-  useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
+    fetchServicesForId();
+  }, [establishmentId]);
 
   const handleOpenModal = (service = null) => {
     setServiceToEdit(service);
@@ -77,29 +56,54 @@ const ManageServices = () => {
   };
 
   const handleSaveService = async (formData) => {
-    if (!selectedEstablishment) {
+    if (!establishmentId) {
       alert("No hay un establecimiento seleccionado para guardar el servicio.");
       return;
     }
+
+    // --- CORRECCIÓN: CONVERSIÓN DE TIPOS DE DATOS ---
+    const processedData = {
+      ...formData,
+      // Convertimos los valores de string a número antes de enviar
+      duracion_minutos: parseInt(formData.duracion_minutos, 10),
+      precio: parseFloat(formData.precio),
+    };
+
+    // Verificación de que la conversión fue exitosa
+    if (isNaN(processedData.duracion_minutos) || isNaN(processedData.precio)) {
+        alert("Por favor, introduce valores numéricos válidos para duración y precio.");
+        return;
+    }
+
     try {
       if (serviceToEdit) {
-        await updateService(serviceToEdit.id, formData);
+        // Enviamos los datos procesados
+        await updateService(serviceToEdit.id, processedData);
       } else {
-        await createService(selectedEstablishment.id, formData);
+        // Enviamos los datos procesados
+        await createService(establishmentId, processedData);
       }
       handleCloseModal();
-      await fetchServices(); // Recargamos la lista
+      
+      // Refrescamos la lista para ver los cambios
+      const updatedServices = await getServicesByEstablishment(establishmentId);
+      setServices(updatedServices || []);
+
     } catch (saveError) {
+      // El mensaje de error de la API ahora debería ser más específico si hay otros problemas
       alert(`Error al guardar: ${saveError.message || 'Ocurrió un error.'}`);
       console.error("Error al guardar el servicio:", saveError);
     }
   };
 
   const handleDeleteService = async (serviceId) => {
+    if (!establishmentId) return;
     if (window.confirm('¿Estás seguro de que quieres eliminar este servicio?')) {
       try {
         await deleteService(serviceId);
-        await fetchServices(); // Recargamos la lista
+        // Refrescamos la lista
+        const updatedServices = await getServicesByEstablishment(establishmentId);
+        setServices(updatedServices || []);
       } catch (deleteError) {
         alert(`Error al eliminar: ${deleteError.message || 'Ocurrió un error.'}`);
         console.error("Error al eliminar el servicio:", deleteError);
@@ -107,44 +111,47 @@ const ManageServices = () => {
     }
   };
 
-  if (loading && !selectedEstablishment) {
-    return <div className="page-wrapper"><p className="p-4">Cargando información del proveedor...</p></div>;
+  // Renderizado condicional si no hay ID en la URL
+  if (!establishmentId) {
+    return (
+      <div className="page-wrapper text-center">
+        <header className="page-header">
+          <h1>Gestionar Servicios</h1>
+        </header>
+        <div className="profile-card p-10">
+          <p className="text-lg text-gray-600">Por favor, selecciona un establecimiento para ver sus servicios.</p>
+          <Link to="/provider/establishments" className="mt-4 inline-block text-indigo-600 hover:underline font-semibold">
+            Ir a la lista de mis establecimientos
+          </Link>
+        </div>
+      </div>
+    );
   }
   
-  if (error) {
-    return <div className="page-wrapper"><p className="error-message p-4">{error}</p></div>;
-  }
-
+  // Renderizado principal si SÍ hay ID en la URL
   return (
     <div className="page-wrapper">
       <header className="page-header">
         <h1>Gestionar Servicios</h1>
-        {selectedEstablishment ? (
-          <p>Estás gestionando los servicios para: <strong>{selectedEstablishment.nombre}</strong></p>
-        ) : (
-          <p>Selecciona un establecimiento para empezar.</p>
-        )}
+        <p>Estás gestionando los servicios para el establecimiento con ID: {establishmentId}</p>
       </header>
       
-      {selectedEstablishment && (
-        <>
-          <div className="mb-6 text-right">
-            <AddServiceButton onClick={() => handleOpenModal()} />
-          </div>
+      <div className="mb-6 text-right">
+        <AddServiceButton onClick={() => handleOpenModal()} />
+      </div>
 
-          <div className="profile-card">
-            {loading && <p className="p-4">Cargando servicios...</p>}
-            
-            {!loading && (
-              <ServiceList 
-                services={services}
-                onEditService={handleOpenModal}
-                onDeleteService={handleDeleteService}
-              />
-            )}
-          </div>
-        </>
-      )}
+      <div className="profile-card">
+        {loading && <p className="p-4">Cargando servicios...</p>}
+        {error && <p className="error-message p-4">{error}</p>}
+        
+        {!loading && !error && (
+          <ServiceList 
+            services={services}
+            onEditService={handleOpenModal}
+            onDeleteService={handleDeleteService}
+          />
+        )}
+      </div>
 
       <ServiceModal
         isOpen={isModalOpen}

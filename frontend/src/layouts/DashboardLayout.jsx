@@ -1,8 +1,8 @@
 // frontend/src/layouts/DashboardLayout.jsx
 
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-// Opcional: Si quieres usar iconos, como en mi ejemplo anterior.
-// import { WrenchScrewdriverIcon, UserIcon, HomeIcon } from '@heroicons/react/24/outline';
+// Opcional: Puedes importar iconos para darle más vida al menú
+// import { BuildingStorefrontIcon, WrenchScrewdriverIcon, UserIcon, HomeIcon } from '@heroicons/react/24/outline';
 
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
@@ -25,7 +25,6 @@ export default function DashboardLayout({ handleLogout }) {
     backgroundColor: location.pathname.startsWith(path) && path !== '/' ? '#374151' : location.pathname === path ? '#374151' : 'transparent',
   });
 
-  // --- Mejoramos la lógica de renderizado de enlaces ---
   const renderNavLinks = () => {
     if (userRole === 'provider') {
       return (
@@ -35,7 +34,12 @@ export default function DashboardLayout({ handleLogout }) {
               Mi Perfil
             </Link>
           </li>
-          {/* --- ENLACE NUEVO AÑADIDO AQUÍ --- */}
+          {/* --- ENLACE AÑADIDO PARA ESTABLECIMIENTOS --- */}
+          <li>
+            <Link to="/provider/establishments" style={getLinkStyle('/provider/establishments')}>
+              Establecimientos
+            </Link>
+          </li>
           <li>
             <Link to="/provider/services" style={getLinkStyle('/provider/services')}>
               Servicios
@@ -55,7 +59,6 @@ export default function DashboardLayout({ handleLogout }) {
       );
     }
 
-    // Retorna null o un menú por defecto si no hay un rol específico
     return null;
   };
 
@@ -71,7 +74,6 @@ export default function DashboardLayout({ handleLogout }) {
                   Inicio
                 </Link>
               </li>
-              {/* Llamamos a la función que renderiza los enlaces según el rol */}
               {renderNavLinks()}
             </ul>
           </nav>

@@ -3,7 +3,7 @@
 import React from 'react';
 import ServiceListItem from './ServiceListItem';
 
-const ServiceList = ({ services, onEditService, onDeleteService }) => {
+const ServiceList = ({ services = [], onEditService, onDeleteService }) => {
   if (services.length === 0) {
     return (
       <div className="text-center py-10">

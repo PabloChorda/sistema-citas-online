@@ -14,6 +14,11 @@ import NewPasswordForm from './pages/NewPasswordForm';
 import ProviderProfile from './pages/ProviderProfile';
 import ClientProfile from './pages/ClientProfile';
 import ManageServices from './pages/ManageServices';
+import ManageEstablishments from './pages/ManageEstablishments';
+import CreateEstablishment from './pages/CreateEstablishment';
+// --- 1. IMPORTAMOS LA NUEVA PÁGINA DE EDICIÓN ---
+import EditEstablishment from './pages/EditEstablishment';
+
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
@@ -57,26 +62,30 @@ function App() {
           </>
         ) : (
           // --- RUTAS PRIVADAS ---
-          // Usamos una única ruta padre para el DashboardLayout
           <Route path="/" element={<DashboardLayout handleLogout={handleLogout} />}>
             
-            {/* La página de bienvenida es la ruta "index" del dashboard */}
             <Route index element={<WelcomeDashboard />} />
 
-            {/* Renderizamos las rutas del proveedor SOLO si el rol coincide */}
+            {/* RUTAS DEL PROVEEDOR */}
             {role === 'provider' && (
               <>
                 <Route path="provider/profile" element={<ProviderProfile />} />
                 <Route path="provider/services" element={<ManageServices />} />
+                
+                <Route path="provider/establishments" element={<ManageEstablishments />} />
+                <Route path="provider/establishments/new" element={<CreateEstablishment />} />
+                
+                {/* --- 2. AÑADIMOS LA RUTA DE EDICIÓN --- */}
+                {/* El ':id' es un parámetro dinámico que se pasará al componente */}
+                <Route path="provider/establishments/edit/:id" element={<EditEstablishment />} />
               </>
             )}
 
-            {/* Renderizamos las rutas del cliente SOLO si el rol coincide */}
+            {/* RUTAS DEL CLIENTE */}
             {role === 'client' && (
               <Route path="client/profile" element={<ClientProfile />} />
             )}
             
-            {/* La ruta comodín debe estar al final, dentro del layout */}
             <Route path="*" element={<NotFoundDashboard />} />
           </Route>
         )}
@@ -85,7 +94,6 @@ function App() {
   );
 }
 
-// ... (tus componentes WelcomeDashboard y NotFoundDashboard se quedan igual) ...
 const WelcomeDashboard = () => (
     <div className="page-wrapper">
         <header className="page-header">
