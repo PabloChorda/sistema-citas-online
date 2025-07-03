@@ -16,9 +16,10 @@ import ClientProfile from './pages/ClientProfile';
 import ManageServices from './pages/ManageServices';
 import ManageEstablishments from './pages/ManageEstablishments';
 import CreateEstablishment from './pages/CreateEstablishment';
-// --- 1. IMPORTAMOS LA NUEVA PÁGINA DE EDICIÓN ---
+// ---  PÁGINA DE EDICIÓN ---
 import EditEstablishment from './pages/EditEstablishment';
 
+import ManageAvailability from './pages/ManageAvailability';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
@@ -74,7 +75,7 @@ function App() {
                 
                 <Route path="provider/establishments" element={<ManageEstablishments />} />
                 <Route path="provider/establishments/new" element={<CreateEstablishment />} />
-                
+                <Route path="provider/availability" element={<ManageAvailability />} />
                 {/* --- 2. AÑADIMOS LA RUTA DE EDICIÓN --- */}
                 {/* El ':id' es un parámetro dinámico que se pasará al componente */}
                 <Route path="provider/establishments/edit/:id" element={<EditEstablishment />} />

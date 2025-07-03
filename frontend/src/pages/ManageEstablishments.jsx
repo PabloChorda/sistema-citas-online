@@ -24,12 +24,14 @@ const EstablishmentCard = ({ establishment, onDelete }) => (
         Editar
       </Link>
       
-      <Link 
-        to={`/provider/services?est_id=${establishment.id}`} 
-        className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
-      >
-        Servicios →
+    <div className="mt-4 flex justify-between items-center">
+        <Link to={`/provider/services?est_id=${establishment.id}`} className="text-sm font-medium text-gray-600 hover:text-gray-800">
+        Servicios
       </Link>
+        <Link to={`/provider/availability?est_id=${establishment.id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+        Gestionar Horario →
+      </Link>
+    </div>
 
       <button 
         onClick={() => onDelete(establishment.id)}

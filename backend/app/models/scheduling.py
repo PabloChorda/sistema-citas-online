@@ -1,12 +1,11 @@
 # backend/app/models/scheduling.py
-"""
-Modelos relacionados con la gestión de horarios, disponibilidad y citas.
-"""
+
 from .. import db
 from .base import BaseModel
 from .enums import day_of_week_enum, appointment_status_enum
 from sqlalchemy.orm import validates
-from sqlalchemy import Time, DateTime, Numeric, Text
+from sqlalchemy import Time, DateTime, Numeric, Text, event
+from datetime import time
 
 class AvailabilityRule(BaseModel):
     __tablename__ = 'availability_rules'
@@ -18,15 +17,18 @@ class AvailabilityRule(BaseModel):
     hora_fin = db.Column(Time(timezone=False), nullable=False)
     activo = db.Column(db.Boolean, default=True, nullable=False, index=True)
 
-    # Relación
     establishment = db.relationship('Establishment', back_populates='availability_rules')
 
+    # Validador simple para asegurar que el formato de hora es correcto al asignar
     @validates('hora_inicio', 'hora_fin')
-    def validate_time_range(self, key, value):
-        if key == 'hora_inicio' and hasattr(self, 'hora_fin') and self.hora_fin and value >= self.hora_fin:
-            raise ValueError("La hora de inicio debe ser anterior a la hora de finalización.")
-        elif key == 'hora_fin' and hasattr(self, 'hora_inicio') and self.hora_inicio and value <= self.hora_inicio:
-            raise ValueError("La hora de finalización debe ser posterior a la hora de inicio.")
+    def validate_time_format(self, key, value):
+        if isinstance(value, str):
+            try:
+                # Solo intentamos convertir para validar el formato.
+                # SQLAlchemy se encargará de la conversión real.
+                time.fromisoformat(value)
+            except ValueError:
+                raise ValueError(f"El formato para '{key}' es inválido. Debe ser HH:MM.")
         return value
 
     def __repr__(self):
@@ -42,6 +44,20 @@ class AvailabilityRule(BaseModel):
             'activo': self.activo,
             **self.to_dict_base()
         }
+
+# --- VALIDACIÓN A NIVEL DE OBJETO ---
+# Esta función se registrará para ejecutarse ANTES de un INSERT o UPDATE en AvailabilityRule
+@event.listens_for(AvailabilityRule, 'before_insert')
+@event.listens_for(AvailabilityRule, 'before_update')
+def receive_before_change(mapper, connection, target):
+    """
+    Se ejecuta justo antes de guardar en la BD.
+    Aquí, el objeto 'target' (la instancia de AvailabilityRule) ya tiene
+    todos sus valores nuevos asignados.
+    """
+    # SQLAlchemy ya ha convertido los strings a objetos 'time' en este punto.
+    if target.hora_inicio and target.hora_fin and target.hora_inicio >= target.hora_fin:
+        raise ValueError("La hora de inicio debe ser anterior a la hora de finalización.")
 
 class TimeBlock(BaseModel):
     __tablename__ = 'time_blocks'
