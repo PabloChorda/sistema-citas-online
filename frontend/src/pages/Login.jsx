@@ -1,7 +1,10 @@
 // frontend/src/pages/Login.jsx
+
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { loginUser } from '../services/authService'; // Asumo que tienes loginWithGoogle en authService
+// 1. Importamos todo lo necesario
+import { loginUser, loginWithGoogle } from '../services/authService';
+import GoogleLoginComponent from "./GoogleLoginComponent";
 import '../styles/Login.css';
 
 function Login({ onLogin }) {
@@ -16,14 +19,25 @@ function Login({ onLogin }) {
     try {
         const data = await loginUser(email, password);
         onLogin(data.access_token, data.role);
-        navigate('/'); // Redirige a la página principal del dashboard
+        navigate('/');
     } catch (error) {
         setMessage(error.message || "Error al iniciar sesión");
     }
   };
 
-  // Aquí puedes añadir la lógica para Google si la tienes
-  // const handleGoogleSuccess = async (response) => { ... };
+  // 2. Creamos la función para manejar el login de Google
+  const handleGoogleLogin = async (googleToken) => {
+    setMessage('');
+    try {
+      // Llamamos a nuestro authService con el token de Google
+      const data = await loginWithGoogle(googleToken);
+      // El resto del flujo es el mismo que el login normal
+      onLogin(data.access_token, data.role);
+      navigate('/');
+    } catch (error) {
+      setMessage(error.message || "Error en el inicio de sesión con Google");
+    }
+  };
 
   return (
     <div className="login-container">
@@ -32,13 +46,26 @@ function Login({ onLogin }) {
           <h1>Iniciar Sesión</h1>
           <p>Accede a tu cuenta para gestionar tus citas</p>
         </header>
+        
+        {/* Separador y Botón de Google */}
+        <div style={{ alignSelf: 'center', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+          <GoogleLoginComponent onLogin={handleGoogleLogin} />
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', color: '#9ca3af', margin: '0 0 1.5rem 0' }}>
+          <hr style={{ flexGrow: 1, borderTop: '1px solid #e5e7eb' }} />
+          <span style={{ padding: '0 1rem', fontSize: '0.9rem' }}>O</span>
+          <hr style={{ flexGrow: 1, borderTop: '1px solid #e5e7eb' }} />
+        </div>
+
         <form onSubmit={handleSubmit}>
           <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required />
           <button type="submit">Entrar</button>
         </form>
-        {message && <p className="login-message">{message}</p>}
-        {/* Aquí iría el botón de login con Google */}
+
+        {message && <p className="login-message" style={{ color: 'red' }}>{message}</p>}
+        
         <footer className="login-footer">
           <p>¿No tienes cuenta? <Link to="/register">Regístrate</Link></p>
           <p>¿Eres proveedor? <Link to="/register/provider">Regístrate como proveedor</Link></p>
