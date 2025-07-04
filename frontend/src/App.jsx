@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import './styles/Login.css';
 
 // Layouts y Páginas
+import BrowsePage from './pages/BrowsePage';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -16,10 +17,11 @@ import ClientProfile from './pages/ClientProfile';
 import ManageServices from './pages/ManageServices';
 import ManageEstablishments from './pages/ManageEstablishments';
 import CreateEstablishment from './pages/CreateEstablishment';
-// ---  PÁGINA DE EDICIÓN ---
-import EditEstablishment from './pages/EditEstablishment';
-
 import ManageAvailability from './pages/ManageAvailability';
+import BookingPage from './pages/BookingPage';
+import ConfirmBookingPage from './pages/ConfirmBookingPage';
+import BookingSuccessPage from './pages/BookingSuccessPage';
+
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
@@ -51,42 +53,65 @@ function App() {
   return (
     <Router>
       <Routes>
+        {/* 
+          --- RUTAS PÚBLICAS Y SEMIPÚBLICAS --- 
+          Estas rutas no están dentro del DashboardLayout y son accesibles
+          tanto para usuarios logueados como no logueados.
+        */}
+        <Route path="/" element={<BrowsePage />} /> {/* Nueva página de inicio */}
+        <Route path="/booking/:establishmentId" element={<BookingPage />} />
+        <Route path="/booking/success" element={<BookingSuccessPage />} />
+        
+        {/* --- RUTA DE CONFIRMACIÓN (PROTEGIDA) --- */}
+        <Route 
+          path="/booking/confirm" 
+          element={
+            // Si hay un token y el rol es 'client', muestra la página.
+            // De lo contrario, redirige al login, guardando la intención original.
+            (token && role === 'client') 
+              ? <ConfirmBookingPage /> 
+              : <Navigate to="/login" state={{ from: location }} replace />
+          } 
+        />
+
         {!token ? (
-          // --- RUTAS PÚBLICAS ---
+          // --- RUTAS EXCLUSIVAS PARA USUARIOS NO LOGUEADOS ---
           <>
             <Route path="/login" element={<Login onLogin={handleLogin} />} />
             <Route path="/register" element={<Register />} />
             <Route path="/register/provider" element={<RegisterProvider />} />
             <Route path="/reset-password/:token" element={<NewPasswordForm />} />
             <Route path="/register/reset-password" element={<ResetPassword />} />
-            <Route path="*" element={<Navigate to="/login" />} />
+            
+            {/* 
+              Si un usuario no logueado intenta acceder a cualquier otra ruta que no sea
+              las definidas arriba (como /provider/dashboard), lo mandamos a la home pública.
+            */}
+            <Route path="*" element={<Navigate to="/" />} />
           </>
         ) : (
-          // --- RUTAS PRIVADAS ---
-          <Route path="/" element={<DashboardLayout handleLogout={handleLogout} />}>
-            
+          // --- RUTAS EXCLUSIVAS PARA USUARIOS LOGUEADOS (DASHBOARD) ---
+          <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
+            {/* 
+              La ruta raíz del dashboard, ej: /dashboard/
+              (Redirigimos desde / para que no haya conflicto con la BrowsePage)
+            */}
             <Route index element={<WelcomeDashboard />} />
-
-            {/* RUTAS DEL PROVEEDOR */}
+            
             {role === 'provider' && (
               <>
                 <Route path="provider/profile" element={<ProviderProfile />} />
-                <Route path="provider/services" element={<ManageServices />} />
-                
                 <Route path="provider/establishments" element={<ManageEstablishments />} />
                 <Route path="provider/establishments/new" element={<CreateEstablishment />} />
+                <Route path="provider/services" element={<ManageServices />} />
                 <Route path="provider/availability" element={<ManageAvailability />} />
-                {/* --- 2. AÑADIMOS LA RUTA DE EDICIÓN --- */}
-                {/* El ':id' es un parámetro dinámico que se pasará al componente */}
-                <Route path="provider/establishments/edit/:id" element={<EditEstablishment />} />
               </>
             )}
 
-            {/* RUTAS DEL CLIENTE */}
             {role === 'client' && (
-              <Route path="client/profile" element={<ClientProfile />} />
+               <Route path="client/profile" element={<ClientProfile />} />
             )}
-            
+
             <Route path="*" element={<NotFoundDashboard />} />
           </Route>
         )}

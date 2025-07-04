@@ -8,5 +8,5 @@ from .service import service_bp
 from .establishment import establishment_bp
 from .availability import availability_bp
 # from .time_blocks import bp as time_blocks_bp   
-# from .appointments import bp as appointments_bp 
+from .appointment import appointment_bp
 from .email_service import bp as email_service_bp

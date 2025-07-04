@@ -41,7 +41,7 @@ def create_app(config_class_object):
     # Importamos y registramos cada blueprint directamente.
     from app.routes import (
         auth_bp, provider_bp, client_bp, service_bp, 
-        establishment_bp, email_service_bp, availability_bp
+        establishment_bp, email_service_bp, availability_bp, appointment_bp, email_service_bp
     )
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(provider_bp, url_prefix='/api/provider')
@@ -49,6 +49,7 @@ def create_app(config_class_object):
     app.register_blueprint(service_bp, url_prefix='/api')
     app.register_blueprint(establishment_bp, url_prefix='/api')
     app.register_blueprint(availability_bp, url_prefix='/api')
+    app.register_blueprint(appointment_bp, url_prefix='/api')
     app.register_blueprint(email_service_bp, url_prefix='/api/email')
     
     app.logger.info("Todos los blueprints han sido registrados.")

@@ -1,5 +1,9 @@
 // frontend/src/services/apiClient.js
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+
+// --- FORZAMOS LA URL CORRECTA PARA DESCARTAR PROBLEMAS DE .ENV ---
+const BASE_URL = 'http://localhost:5001/api';
+
+console.log("API Base URL forzada:", BASE_URL); // Dejamos el log para confirmar
 
 /**
  * Cliente de API centralizado que adjunta automáticamente el token JWT.
@@ -29,11 +33,11 @@ export async function apiClient(endpoint, method = 'GET', body = null) {
     }
     
     try {
+        // La URL final ahora SIEMPRE tendrá el prefijo /api
         const response = await fetch(`${BASE_URL}${endpoint}`, config);
         const data = await response.json();
 
         if (!response.ok) {
-            // Lanza un error con el mensaje de la API si está disponible
             throw new Error(data.msg || `Error ${response.status} en la petición a ${endpoint}`);
         }
         return data;
