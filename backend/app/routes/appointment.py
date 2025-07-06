@@ -4,7 +4,7 @@ from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import Appointment, Service, User
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 appointment_bp = Blueprint('appointment', __name__)
 
@@ -197,13 +197,19 @@ def cancel_appointment(appointment_id):
     if not appointment: return jsonify({"msg": "Cita no encontrada."}), 404
 
     is_client_owner = (user.role == 'client' and appointment.user_id == user_id)
-    is_provider_owner = (user.role == 'provider' and appointment.service.establishment.provider_id == user_id)
+    # El provider_id está en el objeto provider, no directamente en el user
+    is_provider_owner = (user.role == 'provider' and user.provider_profile and appointment.service.establishment.provider_id == user.provider_profile.provider_id)
 
     if not (is_client_owner or is_provider_owner):
         return jsonify({"msg": "No tienes permiso para cancelar esta cita."}), 403
 
     if str(appointment.estado).startswith('CANCELLED'):
         return jsonify({"msg": "Esta cita ya ha sido cancelada."}), 400
+        
+    # No permitir cancelar una cita si su hora de inicio ya ha pasado.
+    # Comparamos con la hora actual en UTC, ya que los tiempos de la BD están en UTC.
+    if appointment.start_time < datetime.now(timezone.utc):
+        return jsonify({"msg": "No se puede cancelar una cita que ya ha comenzado o pasado."}), 400
 
     new_status = 'CANCELLED_BY_CLIENT' if is_client_owner else 'CANCELLED_BY_PROVIDER'
     appointment.estado = new_status

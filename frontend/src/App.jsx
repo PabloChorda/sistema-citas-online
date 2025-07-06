@@ -1,8 +1,8 @@
 // frontend/src/App.jsx
 
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import './styles/Login.css';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import './App.css'; // Asumo que este es tu CSS principal
 
 // Layouts y Páginas
 import BrowsePage from './pages/BrowsePage';
@@ -21,7 +21,8 @@ import ManageAvailability from './pages/ManageAvailability';
 import BookingPage from './pages/BookingPage';
 import ConfirmBookingPage from './pages/ConfirmBookingPage';
 import BookingSuccessPage from './pages/BookingSuccessPage';
-
+import ClientAppointments from './pages/ClientAppointments';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
@@ -53,51 +54,33 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* 
-          --- RUTAS PÚBLICAS Y SEMIPÚBLICAS --- 
-          Estas rutas no están dentro del DashboardLayout y son accesibles
-          tanto para usuarios logueados como no logueados.
-        */}
-        <Route path="/" element={<BrowsePage />} /> {/* Nueva página de inicio */}
+        {/* --- 1. RUTAS PÚBLICAS --- */}
+        {/* Cualquiera puede acceder a estas, esté logueado o no */}
+        <Route path="/" element={<BrowsePage />} />
         <Route path="/booking/:establishmentId" element={<BookingPage />} />
         <Route path="/booking/success" element={<BookingSuccessPage />} />
         
-        {/* --- RUTA DE CONFIRMACIÓN (PROTEGIDA) --- */}
-        <Route 
-          path="/booking/confirm" 
-          element={
-            // Si hay un token y el rol es 'client', muestra la página.
-            // De lo contrario, redirige al login, guardando la intención original.
-            (token && role === 'client') 
-              ? <ConfirmBookingPage /> 
-              : <Navigate to="/login" state={{ from: location }} replace />
-          } 
-        />
+        {/* Rutas de autenticación (si ya estás logueado, te redirigen al dashboard) */}
+        <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
+        <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
+        <Route path="/register/provider" element={!token ? <RegisterProvider /> : <Navigate to="/dashboard" />} />
+        <Route path="/reset-password/:token" element={<NewPasswordForm />} />
+        <Route path="/register/reset-password" element={<ResetPassword />} />
 
-        {!token ? (
-          // --- RUTAS EXCLUSIVAS PARA USUARIOS NO LOGUEADOS ---
-          <>
-            <Route path="/login" element={<Login onLogin={handleLogin} />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/register/provider" element={<RegisterProvider />} />
-            <Route path="/reset-password/:token" element={<NewPasswordForm />} />
-            <Route path="/register/reset-password" element={<ResetPassword />} />
-            
-            {/* 
-              Si un usuario no logueado intenta acceder a cualquier otra ruta que no sea
-              las definidas arriba (como /provider/dashboard), lo mandamos a la home pública.
-            */}
-            <Route path="*" element={<Navigate to="/" />} />
-          </>
-        ) : (
-          // --- RUTAS EXCLUSIVAS PARA USUARIOS LOGUEADOS (DASHBOARD) ---
+
+        {/* --- 2. RUTAS PROTEGIDAS --- */}
+        {/* Todo lo que esté anidado dentro de este Route requerirá un token */}
+        <Route element={<ProtectedRoute token={token} />}>
+          
+          {/* A. Rutas de Booking Protegidas (no necesitan el layout del dashboard) */}
+          <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
+
+          {/* B. Rutas del Dashboard (usan el DashboardLayout) */}
           <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
-            {/* 
-              La ruta raíz del dashboard, ej: /dashboard/
-              (Redirigimos desde / para que no haya conflicto con la BrowsePage)
-            */}
-            <Route index element={<WelcomeDashboard />} />
             
+            <Route index element={<WelcomeDashboard />} />
+
+            {/* Sub-rutas condicionales por rol */}
             {role === 'provider' && (
               <>
                 <Route path="provider/profile" element={<ProviderProfile />} />
@@ -109,16 +92,26 @@ function App() {
             )}
 
             {role === 'client' && (
-               <Route path="client/profile" element={<ClientProfile />} />
+              <>
+                <Route path="client/profile" element={<ClientProfile />} />
+                <Route path="client/appointments" element={<ClientAppointments />} />
+              </>
             )}
-
+            
+            {/* Ruta 404 para cualquier cosa no encontrada DENTRO del dashboard */}
             <Route path="*" element={<NotFoundDashboard />} />
           </Route>
-        )}
+        </Route>
+        
+        {/* --- 3. RUTA COMODÍN FINAL --- */}
+        {/* Si no coincide con ninguna ruta anterior, muestra un 404 genérico */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   );
 }
+
+// --- COMPONENTES AUXILIARES ---
 
 const WelcomeDashboard = () => (
     <div className="page-wrapper">
@@ -132,9 +125,17 @@ const WelcomeDashboard = () => (
 const NotFoundDashboard = () => (
     <div className="page-wrapper" style={{ textAlign: 'center', paddingTop: '5rem' }}>
         <header className="page-header">
-            <h1>404 - Página no encontrada</h1>
-            <p>La ruta a la que intentas acceder no existe dentro del panel.</p>
+            <h1>404 - No Encontrado</h1>
+            <p>La página que buscas no existe dentro del panel de control.</p>
         </header>
+    </div>
+);
+
+const NotFoundPage = () => (
+    <div style={{ textAlign: 'center', paddingTop: '5rem', color: '#333' }}>
+        <h1>404 - Página No Encontrada</h1>
+        <p>Lo sentimos, la página que estás buscando no existe.</p>
+        <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Volver a la página de inicio</Link>
     </div>
 );
 

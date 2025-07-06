@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-// 1. Importamos todo lo necesario
 import { loginUser, loginWithGoogle } from '../services/authService';
 import GoogleLoginComponent from "./GoogleLoginComponent";
 import '../styles/Login.css';
@@ -19,21 +18,18 @@ function Login({ onLogin }) {
     try {
         const data = await loginUser(email, password);
         onLogin(data.access_token, data.role);
-        navigate('/');
+        navigate('/dashboard');
     } catch (error) {
         setMessage(error.message || "Error al iniciar sesión");
     }
   };
 
-  // 2. Creamos la función para manejar el login de Google
   const handleGoogleLogin = async (googleToken) => {
     setMessage('');
     try {
-      // Llamamos a nuestro authService con el token de Google
       const data = await loginWithGoogle(googleToken);
-      // El resto del flujo es el mismo que el login normal
       onLogin(data.access_token, data.role);
-      navigate('/');
+      navigate('/dashboard');
     } catch (error) {
       setMessage(error.message || "Error en el inicio de sesión con Google");
     }
@@ -47,7 +43,6 @@ function Login({ onLogin }) {
           <p>Accede a tu cuenta para gestionar tus citas</p>
         </header>
         
-        {/* Separador y Botón de Google */}
         <div style={{ alignSelf: 'center', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
           <GoogleLoginComponent onLogin={handleGoogleLogin} />
         </div>

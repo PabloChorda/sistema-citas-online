@@ -12,3 +12,19 @@ export const createAppointment = (appointmentData) => {
 };
 
 // Aquí podríamos añadir en el futuro getClientAppointments, cancelAppointment, etc.
+/**
+* Obtiene el historial de citas del cliente autenticado. (Protegido para clientes)
+* @returns {Promise<any>} Un array con los objetos de las citas.
+*/
+export const getClientAppointments = () => {
+ return apiClient('/appointments/client', 'GET');
+};
+
+/**
+* Cancela una cita específica. (Protegido para clientes)
+* @param {number|string} appointmentId
+* @returns {Promise<any>}
+*/
+export const cancelAppointment = (appointmentId) => {
+ return apiClient(`/appointments/${appointmentId}/cancel`, 'PUT');
+};

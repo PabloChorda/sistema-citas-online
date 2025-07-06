@@ -1,4 +1,5 @@
 # backend/app/models/user.py
+
 """
 Modelos User y Provider para la gestión de usuarios, proveedores y autenticación.
 """
@@ -59,8 +60,6 @@ class User(BaseModel):
 class Provider(BaseModel):
     __tablename__ = 'providers'
 
-    # provider_id es A LA VEZ la Clave Primaria y la Clave Foránea.
-    # Esto crea una relación 1 a 1 perfecta.
     provider_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='CASCADE'), primary_key=True)
 
     nombre_comercial = db.Column(db.String(255), nullable=False)
@@ -96,21 +95,17 @@ class Provider(BaseModel):
     def __repr__(self):
         return f'<Provider ID {self.provider_id}: {self.nombre_comercial}>'
 
-    def to_dict(self):
+    def to_dict(self, include_establishments=True):
+        """
+        Serializa el objeto Provider a un diccionario.
+        Acepta un parámetro para evitar la recursión infinita.
+        """
         user_info = self.user.to_dict() if self.user else {}
         
-        # --- LÓGICA PARA INCLUIR LOS ESTABLECIMIENTOS ---
-        # Usamos un try-except por si un establecimiento no tuviera el método to_dict()
-        try:
-            # La relación 'establishments' es lazy='dynamic', por lo que necesitamos .all()
-            establishments_list = [est.to_dict() for est in self.establishments.all()]
-        except Exception:
-            # Si hay algún problema, simplemente devolvemos una lista vacía
-            establishments_list = []
-
-        return {
+        # Creamos el diccionario base con los datos del proveedor
+        data = {
             'provider_id': self.provider_id,
-            'user_id': self.provider_id, # Es el mismo valor
+            'user_id': self.provider_id,
             'email': user_info.get('email'),
             'first_name': user_info.get('first_name'),
             'last_name': user_info.get('last_name'),
@@ -127,9 +122,19 @@ class Provider(BaseModel):
             'timezone': self.timezone,
             'idiomas_hablados': self.idiomas_hablados,
             'direccion_fiscal': self.direccion_fiscal,
-            
-            # --- CAMBIO PRINCIPAL: AÑADIMOS LA LISTA DE ESTABLECIMIENTOS ---
-            'establishments': establishments_list,
-
             **self.to_dict_base()
         }
+
+        # Si se nos pide incluir los establecimientos, los añadimos al diccionario
+        if include_establishments:
+            try:
+                # La relación es lazy='dynamic', por lo que necesitamos .all()
+                establishments_list = [est.to_dict() for est in self.establishments.all()]
+                data['establishments'] = establishments_list
+            except Exception as e:
+                # Si hay algún problema, simplemente devolvemos una lista vacía
+                print(f"Error serializando establecimientos para proveedor {self.provider_id}: {e}")
+                data['establishments'] = []
+        
+        # Devolvemos el diccionario completo al final
+        return data

@@ -128,20 +128,18 @@ class Appointment(BaseModel):
     def validate_precio(self, key, precio):
         if precio is not None:
             try:
-                if float(precio) < 0:
-                    raise ValueError("El precio final no puede ser negativo.")
-            except (ValueError, TypeError):
-                raise ValueError("El precio final debe ser un número válido.")
+                if float(precio) < 0: raise ValueError("El precio final no puede ser negativo.")
+            except (ValueError, TypeError): raise ValueError("El precio final debe ser un número válido.")
         return precio
 
     def __repr__(self):
         return f'<Appointment ID {self.id}: Service ID {self.service_id} from {self.start_time} ({self.estado})>'
 
     def to_dict(self):
+        """Serializa el objeto Appointment a un diccionario."""
         return {
             'id': self.id,
             'user_id': self.user_id,
-            'service_id': self.service_id,
             'start_time': self.start_time.isoformat(),
             'end_time': self.end_time.isoformat(),
             'estado': self.estado,
@@ -150,5 +148,9 @@ class Appointment(BaseModel):
             'requiere_confirmacion': self.requiere_confirmacion,
             'origen_reserva': self.origen_reserva,
             'precio_final': str(self.precio_final) if self.precio_final is not None else None,
+            
+            # Incluimos el objeto de servicio completo, que ya contiene el establecimiento.
+            'service': self.service.to_dict() if self.service else None,
+            
             **self.to_dict_base()
         }

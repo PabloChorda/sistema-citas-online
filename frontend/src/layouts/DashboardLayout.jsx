@@ -2,7 +2,7 @@
 
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 // Opcional: Puedes importar iconos para darle más vida al menú
-// import { BuildingStorefrontIcon, WrenchScrewdriverIcon, UserIcon, HomeIcon } from '@heroicons/react/24/outline';
+// import { CalendarDaysIcon, BuildingStorefrontIcon, WrenchScrewdriverIcon, UserIcon, HomeIcon } from '@heroicons/react/24/outline';
 
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
@@ -11,7 +11,7 @@ export default function DashboardLayout({ handleLogout }) {
 
   const onLogoutClick = () => {
     handleLogout();
-    navigate('/login');
+    navigate('/login'); // Redirige al login, no a la home pública
   };
 
   const getLinkStyle = (path) => ({
@@ -22,26 +22,26 @@ export default function DashboardLayout({ handleLogout }) {
     padding: '10px 15px',
     borderRadius: '8px',
     transition: 'background-color 0.2s ease-in-out',
-    backgroundColor: location.pathname.startsWith(path) && path !== '/' ? '#374151' : location.pathname === path ? '#374151' : 'transparent',
+    backgroundColor: location.pathname.startsWith(path) && path !== '/dashboard' ? '#374151' : location.pathname === path ? '#374151' : 'transparent',
   });
 
   const renderNavLinks = () => {
+    // --- MENÚ PARA PROVEEDORES ---
     if (userRole === 'provider') {
       return (
         <>
           <li>
-            <Link to="/provider/profile" style={getLinkStyle('/provider/profile')}>
+            <Link to="/dashboard/provider/profile" style={getLinkStyle('/dashboard/provider/profile')}>
               Mi Perfil
             </Link>
           </li>
-          {/* --- ENLACE AÑADIDO PARA ESTABLECIMIENTOS --- */}
           <li>
-            <Link to="/provider/establishments" style={getLinkStyle('/provider/establishments')}>
+            <Link to="/dashboard/provider/establishments" style={getLinkStyle('/dashboard/provider/establishments')}>
               Establecimientos
             </Link>
           </li>
           <li>
-            <Link to="/provider/services" style={getLinkStyle('/provider/services')}>
+            <Link to="/dashboard/provider/services" style={getLinkStyle('/dashboard/provider/services')}>
               Servicios
             </Link>
           </li>
@@ -49,13 +49,22 @@ export default function DashboardLayout({ handleLogout }) {
       );
     }
     
+    // --- MENÚ PARA CLIENTES (ACTUALIZADO) ---
     if (userRole === 'client') {
       return (
-        <li>
-          <Link to="/client/profile" style={getLinkStyle('/client/profile')}>
-            Mi Perfil
-          </Link>
-        </li>
+        <>
+          <li>
+            <Link to="/dashboard/client/profile" style={getLinkStyle('/dashboard/client/profile')}>
+              Mi Perfil
+            </Link>
+          </li>
+          {/* --- ENLACE AÑADIDO PARA "MIS CITAS" --- */}
+          <li>
+            <Link to="/dashboard/client/appointments" style={getLinkStyle('/dashboard/client/appointments')}>
+              Mis Citas
+            </Link>
+          </li>
+        </>
       );
     }
 
@@ -70,7 +79,8 @@ export default function DashboardLayout({ handleLogout }) {
           <nav className="sidebar-nav">
             <ul>
               <li>
-                <Link to="/" style={getLinkStyle('/')}>
+                {/* El enlace de "Inicio" ahora apunta al dashboard */}
+                <Link to="/dashboard" style={getLinkStyle('/dashboard')}>
                   Inicio
                 </Link>
               </li>

@@ -1,4 +1,5 @@
 # backend/app/models/service.py
+
 """
 Modelo Service para los servicios ofrecidos por los establecimientos.
 """
@@ -29,6 +30,7 @@ class Service(BaseModel):
     establishment = db.relationship('Establishment', back_populates='services')
     appointments = db.relationship('Appointment', back_populates='service', lazy='dynamic', cascade="save-update, merge")
 
+    # ... (Todos los @validates y __repr__ se quedan igual) ...
     @validates('duracion_minutos')
     def validate_duracion(self, key, duracion):
         if not isinstance(duracion, int) or duracion <= 0:
@@ -37,14 +39,10 @@ class Service(BaseModel):
 
     @validates('precio')
     def validate_precio(self, key, precio):
-        if precio is None:
-            raise ValueError("El precio es obligatorio.")
+        if precio is None: raise ValueError("El precio es obligatorio.")
         try:
-            precio_f = float(precio)
-            if precio_f < 0:
-                raise ValueError("El precio no puede ser negativo.")
-        except (ValueError, TypeError):
-            raise ValueError("El precio debe ser un número válido.")
+            if float(precio) < 0: raise ValueError("El precio no puede ser negativo.")
+        except (ValueError, TypeError): raise ValueError("El precio debe ser un número válido.")
         return precio
 
     @validates('limite_reservas_diarias')
@@ -57,6 +55,7 @@ class Service(BaseModel):
         return f'<Service ID {self.id}: {self.nombre} (Establishment ID: {self.establishment_id})>'
 
     def to_dict(self):
+        """Serializa el objeto Service a un diccionario."""
         return {
             'id': self.id,
             'establishment_id': self.establishment_id,
@@ -69,5 +68,9 @@ class Service(BaseModel):
             'orden': self.orden,
             'requiere_confirmacion_manual': self.requiere_confirmacion_manual,
             'limite_reservas_diarias': self.limite_reservas_diarias,
+            
+            # Incluimos la información del establecimiento.
+            'establishment': self.establishment.to_dict() if self.establishment else None,
+
             **self.to_dict_base()
         }

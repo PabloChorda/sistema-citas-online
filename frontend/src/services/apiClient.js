@@ -33,8 +33,11 @@ export async function apiClient(endpoint, method = 'GET', body = null) {
     }
     
     try {
-        // La URL final ahora SIEMPRE tendrá el prefijo /api
-        const response = await fetch(`${BASE_URL}${endpoint}`, config);
+        // --- LÍNEA MODIFICADA ---
+        // Nos aseguramos de que el endpoint empiece con una barra para una unión correcta.
+        const finalEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        
+        const response = await fetch(`${BASE_URL}${finalEndpoint}`, config);
         const data = await response.json();
 
         if (!response.ok) {
