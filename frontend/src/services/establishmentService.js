@@ -63,7 +63,6 @@ export const getAvailableSlots = (establishmentId, serviceId, date) => {
   return apiClient(endpoint, 'GET');
 };
 
-// --- NUEVA FUNCIÓN AÑADIDA ---
 /**
  * Obtiene la lista de todos los establecimientos públicos para el directorio. (Público)
  * @returns {Promise<any>} Una lista de objetos de establecimiento.
@@ -71,4 +70,12 @@ export const getAvailableSlots = (establishmentId, serviceId, date) => {
 export const getAllPublicEstablishments = () => {
   // Apunta a la nueva ruta pública que acabamos de crear en el backend.
   return apiClient('/public/establishments', 'GET');
+};
+/**
+* Obtiene todas las citas para un establecimiento específico. (Protegido para Proveedor)
+* @param {string|number} establishmentId
+* @returns {Promise<any>}
+*/
+export const getAppointmentsForEstablishment = (establishmentId) => {
+ return apiClient(`/establishments/${establishmentId}/appointments`, 'GET');
 };

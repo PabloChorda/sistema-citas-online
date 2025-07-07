@@ -23,6 +23,7 @@ import ConfirmBookingPage from './pages/ConfirmBookingPage';
 import BookingSuccessPage from './pages/BookingSuccessPage';
 import ClientAppointments from './pages/ClientAppointments';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import ProviderAppointments from './pages/ProviderAppointments';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
@@ -88,6 +89,7 @@ function App() {
                 <Route path="provider/establishments/new" element={<CreateEstablishment />} />
                 <Route path="provider/services" element={<ManageServices />} />
                 <Route path="provider/availability" element={<ManageAvailability />} />
+                <Route path="provider/appointments" element={<ProviderAppointments />} />
               </>
             )}
 

@@ -3,43 +3,63 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getProviderProfile } from '../services/providerService';
-// --- 1. IMPORTAMOS LA FUNCIÓN deleteEstablishment ---
 import { deleteEstablishment } from '../services/establishmentService'; 
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
 
-// El componente EstablishmentCard ya estaba correcto, no necesita cambios.
 const EstablishmentCard = ({ establishment, onDelete }) => (
   <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 flex flex-col">
-    <div className="flex-grow">
+    {/* --- Sección de Información (sin cambios) --- */}
+    <div className="flex-grow mb-4">
       <h3 className="text-xl font-semibold text-gray-800">{establishment.nombre}</h3>
       <p className="text-gray-500 mt-2 text-sm">{establishment.direccion_completa}</p>
     </div>
     
-    <div className="mt-6 pt-4 border-t border-gray-200 flex justify-between items-center">
-      <Link 
-        to={`/provider/establishments/edit/${establishment.id}`}
-        className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-indigo-600"
-      >
-        <PencilIcon className="h-4 w-4 mr-2" />
-        Editar
-      </Link>
+    {/* --- Sección de Acciones (Reorganizada) --- */}
+    <div className="mt-auto pt-4 border-t border-gray-200">
       
-    <div className="mt-4 flex justify-between items-center">
-        <Link to={`/provider/services?est_id=${establishment.id}`} className="text-sm font-medium text-gray-600 hover:text-gray-800">
-        Servicios
-      </Link>
-        <Link to={`/provider/availability?est_id=${establishment.id}`} className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
-        Gestionar Horario →
-      </Link>
-    </div>
+      {/* Grupo de enlaces de gestión */}
+      <div className="flex justify-between items-center mb-4">
+        <Link 
+          to={`/dashboard/provider/services?est_id=${establishment.id}`} 
+          className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+        >
+          Servicios
+        </Link>
+        
+        <Link 
+          to={`/dashboard/provider/availability?est_id=${establishment.id}`} 
+          className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+        >
+          Horario
+        </Link>
+        
+        {/* --- NUEVO ENLACE A LA AGENDA --- */}
+        <Link 
+          to={`/dashboard/provider/appointments?est_id=${establishment.id}&name=${encodeURIComponent(establishment.nombre)}`} 
+          className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+        >
+          Agenda
+        </Link>
+      </div>
 
-      <button 
-        onClick={() => onDelete(establishment.id)}
-        className="inline-flex items-center text-sm font-medium text-red-600 hover:text-red-800"
-        title="Eliminar establecimiento"
-      >
-        <TrashIcon className="h-4 w-4" />
-      </button>
+      {/* Grupo de botones de edición/borrado */}
+      <div className="flex justify-between items-center">
+        <Link 
+          to={`/dashboard/provider/establishments/edit/${establishment.id}`}
+          className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-indigo-600"
+        >
+          <PencilIcon className="h-4 w-4 mr-2" />
+          Editar
+        </Link>
+        
+        <button 
+          onClick={() => onDelete(establishment.id)}
+          className="inline-flex items-center text-sm font-medium text-red-600 hover:text-red-800"
+          title="Eliminar establecimiento"
+        >
+          <TrashIcon className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   </div>
 );

@@ -152,5 +152,8 @@ class Appointment(BaseModel):
             # Incluimos el objeto de servicio completo, que ya contiene el establecimiento.
             'service': self.service.to_dict() if self.service else None,
             
+            # --- AÑADIMOS LA INFORMACIÓN DEL CLIENTE ---
+            'user': self.user.to_dict() if self.user else None,
+
             **self.to_dict_base()
         }
