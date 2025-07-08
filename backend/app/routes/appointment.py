@@ -5,6 +5,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import Appointment, Service, User
 from datetime import datetime, timedelta, timezone
+from .email_service import send_appointment_confirmation_emails
 
 appointment_bp = Blueprint('appointment', __name__)
 
@@ -110,7 +111,14 @@ def create_appointment():
     )
     db.session.add(new_appointment)
     db.session.commit()
-    return jsonify(new_appointment.to_dict()), 201
+    try:
+        send_appointment_confirmation_emails(new_appointment)
+    except Exception as e:
+        # Si el envío de email falla, no rompemos la petición. Solo lo registramos.
+        current_app.logger.error(f"La cita {new_appointment.id} se creó, pero falló el envío de emails: {e}", exc_info=True)
+
+    # Devolvemos la respuesta al frontend como siempre.
+    return jsonify(new_appointment.to_dict()), 201    
 
 @appointment_bp.route('appointments/client', methods=['GET'])
 @jwt_required()
