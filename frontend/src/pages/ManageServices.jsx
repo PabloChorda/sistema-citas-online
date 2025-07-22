@@ -120,7 +120,7 @@ const ManageServices = () => {
         </header>
         <div className="profile-card p-10">
           <p className="text-lg text-gray-600">Por favor, selecciona un establecimiento para ver sus servicios.</p>
-          <Link to="/provider/establishments" className="mt-4 inline-block text-indigo-600 hover:underline font-semibold">
+          <Link to="/dashboard/provider/establishments" className="mt-4 inline-block text-indigo-600 hover:underline font-semibold">
             Ir a la lista de mis establecimientos
           </Link>
         </div>

@@ -8,32 +8,26 @@ import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/react/24/solid';
 
 const EstablishmentCard = ({ establishment, onDelete }) => (
   <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 flex flex-col">
-    {/* --- Sección de Información (sin cambios) --- */}
     <div className="flex-grow mb-4">
       <h3 className="text-xl font-semibold text-gray-800">{establishment.nombre}</h3>
       <p className="text-gray-500 mt-2 text-sm">{establishment.direccion_completa}</p>
     </div>
     
-    {/* --- Sección de Acciones (Reorganizada) --- */}
     <div className="mt-auto pt-4 border-t border-gray-200">
-      
-      {/* Grupo de enlaces de gestión */}
       <div className="flex justify-between items-center mb-4">
+        {/* --- RUTAS DE ENLACES CORREGIDAS --- */}
         <Link 
           to={`/dashboard/provider/services?est_id=${establishment.id}`} 
           className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
         >
           Servicios
         </Link>
-        
         <Link 
           to={`/dashboard/provider/availability?est_id=${establishment.id}`} 
           className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
         >
           Horario
         </Link>
-        
-        {/* --- NUEVO ENLACE A LA AGENDA --- */}
         <Link 
           to={`/dashboard/provider/appointments?est_id=${establishment.id}&name=${encodeURIComponent(establishment.nombre)}`} 
           className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
@@ -42,7 +36,6 @@ const EstablishmentCard = ({ establishment, onDelete }) => (
         </Link>
       </div>
 
-      {/* Grupo de botones de edición/borrado */}
       <div className="flex justify-between items-center">
         <Link 
           to={`/dashboard/provider/establishments/edit/${establishment.id}`}
@@ -70,33 +63,31 @@ const ManageEstablishments = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Esta función se encarga de recargar los datos
   const fetchProfileAndEstablishments = async () => {
     try {
-      // No ponemos setLoading(true) aquí para que la recarga sea más sutil
+      // No reseteamos el loading a true en las recargas para una UX más fluida
       const profile = await getProviderProfile();
       setEstablishments(profile.establishments || []);
     } catch (err) {
       setError('No se pudo cargar la información de los establecimientos.');
       console.error(err);
     } finally {
-      setLoading(false); // Solo ponemos loading a false al final de todo
+      setLoading(false);
     }
   };
 
   useEffect(() => {
+    // Ponemos el loading a true solo en la carga inicial
+    setLoading(true);
     fetchProfileAndEstablishments();
   }, []);
 
-  // --- 2. ACTUALIZAMOS LA FUNCIÓN DE BORRADO ---
   const handleDeleteEstablishment = async (establishmentId) => {
     if (window.confirm('¿Estás seguro de que quieres eliminar este establecimiento? Se borrarán también todos sus servicios y citas asociadas.')) {
       try {
-        // Reemplazamos el console.log con la llamada real a la API
         await deleteEstablishment(establishmentId);
-        
-        // Refrescamos la lista para que el establecimiento eliminado desaparezca de la UI
-        fetchProfileAndEstablishments(); 
+        // Volvemos a cargar la lista para que el cambio se refleje
+        await fetchProfileAndEstablishments(); 
       } catch (err) {
         alert(err.message || "Error al eliminar el establecimiento.");
         console.error(err);
@@ -104,7 +95,6 @@ const ManageEstablishments = () => {
     }
   };
 
-  // El renderizado inicial y el manejo de errores se quedan igual
   if (loading) {
     return <div className="page-wrapper"><p className="p-4">Cargando establecimientos...</p></div>;
   }
@@ -120,8 +110,9 @@ const ManageEstablishments = () => {
           <h1>Mis Establecimientos</h1>
           <p>Gestiona los locales donde ofreces tus servicios.</p>
         </div>
+        {/* --- RUTA DEL BOTÓN CORREGIDA --- */}
         <Link 
-          to="/provider/establishments/new" 
+          to="/dashboard/provider/establishments/new" 
           className="inline-flex items-center justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
         >
           <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
@@ -135,7 +126,7 @@ const ManageEstablishments = () => {
             <EstablishmentCard 
               key={est.id} 
               establishment={est} 
-              onDelete={handleDeleteEstablishment} // La función ya se pasa correctamente
+              onDelete={handleDeleteEstablishment}
             />
           ))
         ) : (

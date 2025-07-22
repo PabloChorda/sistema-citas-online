@@ -1,8 +1,8 @@
 // frontend/src/App.jsx
 
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import './App.css'; // Asumo que este es tu CSS principal
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import './App.css';
 
 // Layouts y Páginas
 import BrowsePage from './pages/BrowsePage';
@@ -17,6 +17,7 @@ import ClientProfile from './pages/ClientProfile';
 import ManageServices from './pages/ManageServices';
 import ManageEstablishments from './pages/ManageEstablishments';
 import CreateEstablishment from './pages/CreateEstablishment';
+import EditEstablishment from './pages/EditEstablishment';
 import ManageAvailability from './pages/ManageAvailability';
 import BookingPage from './pages/BookingPage';
 import ConfirmBookingPage from './pages/ConfirmBookingPage';
@@ -56,65 +57,54 @@ function App() {
     <Router>
       <Routes>
         {/* --- 1. RUTAS PÚBLICAS --- */}
-        {/* Cualquiera puede acceder a estas, esté logueado o no */}
         <Route path="/" element={<BrowsePage />} />
         <Route path="/booking/:establishmentId" element={<BookingPage />} />
         <Route path="/booking/success" element={<BookingSuccessPage />} />
-        
-        {/* Rutas de autenticación (si ya estás logueado, te redirigen al dashboard) */}
         <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
         <Route path="/register/provider" element={!token ? <RegisterProvider /> : <Navigate to="/dashboard" />} />
         <Route path="/reset-password/:token" element={<NewPasswordForm />} />
         <Route path="/register/reset-password" element={<ResetPassword />} />
 
-
         {/* --- 2. RUTAS PROTEGIDAS --- */}
-        {/* Todo lo que esté anidado dentro de este Route requerirá un token */}
         <Route element={<ProtectedRoute token={token} />}>
-          
-          {/* A. Rutas de Booking Protegidas (no necesitan el layout del dashboard) */}
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
-
-          {/* B. Rutas del Dashboard (usan el DashboardLayout) */}
           <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
-            
             <Route index element={<WelcomeDashboard />} />
 
-            {/* Sub-rutas condicionales por rol */}
+            {/* --- GRUPO DE RUTAS PARA PROVEEDOR --- */}
             {role === 'provider' && (
-              <>
-                <Route path="provider/profile" element={<ProviderProfile />} />
-                <Route path="provider/establishments" element={<ManageEstablishments />} />
-                <Route path="provider/establishments/new" element={<CreateEstablishment />} />
-                <Route path="provider/services" element={<ManageServices />} />
-                <Route path="provider/availability" element={<ManageAvailability />} />
-                <Route path="provider/appointments" element={<ProviderAppointments />} />
-              </>
+              <Route path="provider">
+                <Route path="profile" element={<ProviderProfile />} />
+                <Route path="establishments" element={<ManageEstablishments />} />
+                <Route path="establishments/new" element={<CreateEstablishment />} />
+                <Route path="establishments/edit/:establishmentId" element={<EditEstablishment />} />
+                <Route path="services" element={<ManageServices />} />
+                <Route path="availability" element={<ManageAvailability />} />
+                <Route path="appointments" element={<ProviderAppointments />} />
+              </Route>
             )}
 
+            {/* --- GRUPO DE RUTAS PARA CLIENTE --- */}
             {role === 'client' && (
-              <>
-                <Route path="client/profile" element={<ClientProfile />} />
-                <Route path="client/appointments" element={<ClientAppointments />} />
-              </>
+              <Route path="client">
+                <Route path="profile" element={<ClientProfile />} />
+                <Route path="appointments" element={<ClientAppointments />} />
+              </Route>
             )}
             
-            {/* Ruta 404 para cualquier cosa no encontrada DENTRO del dashboard */}
             <Route path="*" element={<NotFoundDashboard />} />
           </Route>
         </Route>
         
         {/* --- 3. RUTA COMODÍN FINAL --- */}
-        {/* Si no coincide con ninguna ruta anterior, muestra un 404 genérico */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   );
 }
 
-// --- COMPONENTES AUXILIARES ---
-
+// ... (tus componentes auxiliares se mantienen igual)
 const WelcomeDashboard = () => (
     <div className="page-wrapper">
         <header className="page-header">

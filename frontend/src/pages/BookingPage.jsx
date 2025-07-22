@@ -1,9 +1,12 @@
 // frontend/src/pages/BookingPage.jsx
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css'; 
+
+// --- 1. IMPORTAMOS NUESTRO HOOK DEL CONTEXTO ---
+import { useBooking } from '../context/BookingContext';
 
 // Importamos las funciones de nuestro servicio
 import { getAvailableSlots, getPublicEstablishmentDetails } from '../services/establishmentService';
@@ -11,6 +14,9 @@ import { getAvailableSlots, getPublicEstablishmentDetails } from '../services/es
 const BookingPage = () => {
   const { establishmentId } = useParams();
   const navigate = useNavigate();
+
+  // --- 2. OBTENEMOS LA FUNCIÓN PARA GUARDAR LOS DETALLES DE LA RESERVA ---
+  const { setBookingInfo } = useBooking();
   
   const [establishment, setEstablishment] = useState(null);
   const [selectedService, setSelectedService] = useState(null);
@@ -20,15 +26,13 @@ const BookingPage = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [error, setError] = useState('');
 
-  // Efecto para cargar los detalles del establecimiento y sus servicios desde la API
+  // Efecto para cargar los detalles del establecimiento (sin cambios)
   useEffect(() => {
     const fetchEstablishmentData = async () => {
-      // Reiniciamos el error y los datos cada vez que cambia el ID
       setError('');
       setEstablishment(null);
       try {
         setLoading(true);
-        // LLAMADA REAL A LA API para obtener los detalles públicos
         const data = await getPublicEstablishmentDetails(establishmentId);
         setEstablishment(data);
       } catch (err) {
@@ -41,16 +45,15 @@ const BookingPage = () => {
     fetchEstablishmentData();
   }, [establishmentId]);
 
-  // Efecto que se dispara cuando el usuario elige un servicio o una fecha
+  // Efecto para cargar los horarios (sin cambios)
   useEffect(() => {
-    // Solo se ejecuta si tenemos un servicio y una fecha seleccionados
     if (selectedService && selectedDate) {
       const fetchSlots = async () => {
         setLoadingSlots(true);
-        setError(''); // Limpiamos errores de horarios anteriores
+        setError('');
         setAvailableSlots([]);
         try {
-          const dateStr = selectedDate.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+          const dateStr = selectedDate.toISOString().split('T')[0];
           const slots = await getAvailableSlots(establishmentId, selectedService.id, dateStr);
           setAvailableSlots(slots);
         } catch (err) {
@@ -64,9 +67,9 @@ const BookingPage = () => {
     }
   }, [selectedService, selectedDate, establishmentId]);
 
+  // handleDateChange y handleServiceChange se quedan igual
   const handleDateChange = (date) => {
     setSelectedDate(date);
-    // Limpiamos los slots al cambiar de fecha para forzar una nueva búsqueda
     setAvailableSlots([]);
   };
 
@@ -75,24 +78,29 @@ const BookingPage = () => {
     if (establishment && establishment.services) {
       const service = establishment.services.find(s => s.id === serviceId);
       setSelectedService(service);
-      // Limpiamos los slots al cambiar de servicio
       setAvailableSlots([]);
     }
   };
 
+  // --- 3. ACTUALIZAMOS handleSlotClick PARA USAR EL CONTEXTO ---
   const handleSlotClick = (slot) => {
-    // Navegamos a la página de confirmación, pasando los datos necesarios
-    navigate('/booking/confirm', { 
-      state: { 
-        establishment,
-        service: selectedService, 
-        date: selectedDate.toISOString().split('T')[0],
-        slot 
-      } 
-    });
+    // Creamos el objeto con todos los detalles de la reserva
+    const bookingData = { 
+      establishment,
+      service: selectedService, 
+      // Guardamos la fecha completa y el slot por separado
+      date: selectedDate.toISOString(), 
+      slot 
+    };
+    
+    // Guardamos estos detalles en nuestro "almacén" global (el contexto)
+    setBookingInfo(bookingData);
+    
+    // Navegamos a la página de confirmación. Ya no necesitamos pasarle el 'state'.
+    navigate('/booking/confirm');
   };
 
-  // --- Lógica de Renderizado ---
+  // La lógica de renderizado se mantiene exactamente igual
   if (loading) return <div className="page-wrapper"><p>Cargando información del local...</p></div>;
   if (error) return <div className="page-wrapper"><p className="error-message">{error}</p></div>;
   if (!establishment) return <div className="page-wrapper"><p>Establecimiento no encontrado.</p></div>;
@@ -123,7 +131,7 @@ const BookingPage = () => {
                 <Calendar 
                   onChange={handleDateChange} 
                   value={selectedDate} 
-                  minDate={new Date()} // No permite seleccionar fechas pasadas
+                  minDate={new Date()}
                 />
               </div>
             </div>

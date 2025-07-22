@@ -1,7 +1,8 @@
 // frontend/src/pages/Login.jsx
 
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+// --- 1. IMPORTAMOS useLocation ---
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { loginUser, loginWithGoogle } from '../services/authService';
 import GoogleLoginComponent from "./GoogleLoginComponent";
 import '../styles/Login.css';
@@ -10,7 +11,10 @@ function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
+  
+  // --- 2. INICIALIZAMOS LOS HOOKS ---
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -18,7 +22,13 @@ function Login({ onLogin }) {
     try {
         const data = await loginUser(email, password);
         onLogin(data.access_token, data.role);
-        navigate('/dashboard');
+        
+        // --- 3. LÓGICA DE REDIRECCIÓN INTELIGENTE ---
+        // Buscamos la ruta a la que el usuario intentaba ir.
+        // Si no existe, lo mandamos al dashboard por defecto.
+        const from = location.state?.from?.pathname || '/dashboard';
+        navigate(from, { replace: true });
+
     } catch (error) {
         setMessage(error.message || "Error al iniciar sesión");
     }
@@ -29,7 +39,11 @@ function Login({ onLogin }) {
     try {
       const data = await loginWithGoogle(googleToken);
       onLogin(data.access_token, data.role);
-      navigate('/dashboard');
+      
+      // --- 4. APLICAMOS LA MISMA LÓGICA AL LOGIN DE GOOGLE ---
+      const from = location.state?.from?.pathname || '/dashboard';
+      navigate(from, { replace: true });
+
     } catch (error) {
       setMessage(error.message || "Error en el inicio de sesión con Google");
     }

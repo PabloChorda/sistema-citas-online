@@ -5,6 +5,9 @@ import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.jsx';
 
+// --- 1. IMPORTAMOS NUESTRO BOOKINGPROVIDER ---
+import { BookingProvider } from './context/BookingContext.jsx';
+
 // Importamos el proveedor de Google
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
@@ -16,9 +19,15 @@ const root = createRoot(document.getElementById('root'));
 
 root.render(
   <StrictMode>
-    {/* Ahora el clientId tiene un valor correcto y no será undefined */}
+    {/* Envolvemos la aplicación con ambos proveedores. */}
+    {/* El orden entre GoogleOAuthProvider y BookingProvider no es crítico, */}
+    {/* pero es una buena práctica tener los proveedores de datos (como Booking) */}
+    {/* lo más adentro posible, cerca de la App. */}
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <App />
+      {/* --- 2. ENVOLVEMOS LA APP CON EL BOOKINGPROVIDER --- */}
+      <BookingProvider>
+        <App />
+      </BookingProvider>
     </GoogleOAuthProvider>
   </StrictMode>
 );

@@ -1,8 +1,6 @@
 // frontend/src/layouts/DashboardLayout.jsx
 
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-// Opcional: Puedes importar iconos para darle más vida al menú
-// import { CalendarDaysIcon, BuildingStorefrontIcon, WrenchScrewdriverIcon, UserIcon, HomeIcon } from '@heroicons/react/24/outline';
 
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
@@ -11,19 +9,23 @@ export default function DashboardLayout({ handleLogout }) {
 
   const onLogoutClick = () => {
     handleLogout();
-    navigate('/login'); // Redirige al login, no a la home pública
+    navigate('/login');
   };
 
-  const getLinkStyle = (path) => ({
-    color: '#e2e8f0',
-    textDecoration: 'none',
-    fontSize: '15px',
-    display: 'block',
-    padding: '10px 15px',
-    borderRadius: '8px',
-    transition: 'background-color 0.2s ease-in-out',
-    backgroundColor: location.pathname.startsWith(path) && path !== '/dashboard' ? '#374151' : location.pathname === path ? '#374151' : 'transparent',
-  });
+  const getLinkStyle = (path) => {
+    // Lógica mejorada para el resaltado del enlace activo
+    const isActive = location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
+    return {
+      color: '#e2e8f0',
+      textDecoration: 'none',
+      fontSize: '15px',
+      display: 'block',
+      padding: '10px 15px',
+      borderRadius: '8px',
+      transition: 'background-color 0.2s ease-in-out',
+      backgroundColor: isActive ? '#374151' : 'transparent',
+    };
+  };
 
   const renderNavLinks = () => {
     // --- MENÚ PARA PROVEEDORES ---
@@ -45,11 +47,12 @@ export default function DashboardLayout({ handleLogout }) {
               Servicios
             </Link>
           </li>
+          {/* Aquí podrías añadir un futuro enlace a la Agenda del Proveedor */}
         </>
       );
     }
     
-    // --- MENÚ PARA CLIENTES (ACTUALIZADO) ---
+    // --- MENÚ PARA CLIENTES ---
     if (userRole === 'client') {
       return (
         <>
@@ -58,10 +61,15 @@ export default function DashboardLayout({ handleLogout }) {
               Mi Perfil
             </Link>
           </li>
-          {/* --- ENLACE AÑADIDO PARA "MIS CITAS" --- */}
           <li>
             <Link to="/dashboard/client/appointments" style={getLinkStyle('/dashboard/client/appointments')}>
               Mis Citas
+            </Link>
+          </li>
+          {/* Enlace para que un cliente pueda iniciar una nueva reserva */}
+          <li>
+             <Link to="/" style={getLinkStyle('/')}>
+              Reservar Cita
             </Link>
           </li>
         </>
@@ -79,7 +87,6 @@ export default function DashboardLayout({ handleLogout }) {
           <nav className="sidebar-nav">
             <ul>
               <li>
-                {/* El enlace de "Inicio" ahora apunta al dashboard */}
                 <Link to="/dashboard" style={getLinkStyle('/dashboard')}>
                   Inicio
                 </Link>

@@ -1,32 +1,53 @@
 // frontend/src/pages/ConfirmBookingPage.jsx
 
-import React, { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+// --- 1. IMPORTAMOS NUESTRO HOOK Y EL SERVICIO ---
+import { useBooking } from '../context/BookingContext';
 import { createAppointment } from '../services/appointmentService';
 
 const ConfirmBookingPage = () => {
   const navigate = useNavigate();
-  const location = useLocation();
-  
-  // Obtenemos los datos pasados desde BookingPage
-  const { establishment, service, date, slot } = location.state || {};
+  // --- 2. LEEMOS LOS DATOS Y FUNCIONES DEL CONTEXTO ---
+  const { bookingDetails, clearBookingInfo } = useBooking();
   
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Si el usuario llega a esta página directamente sin datos, lo redirigimos.
-  if (!establishment || !service || !date || !slot) {
-    // Idealmente, redirigir a la página de inicio o a la de booking
-    return <div className="page-wrapper"><p>Faltan datos para la reserva. Por favor, vuelve a empezar.</p></div>;
+  // useEffect para redirigir si no hay datos en el contexto
+  useEffect(() => {
+    if (!bookingDetails) {
+      console.error("No se encontraron detalles de reserva, redirigiendo a la página principal.");
+      // Si el usuario llega aquí sin pasar por la BookingPage, lo mandamos a la home
+      navigate('/');
+    }
+  }, [bookingDetails, navigate]);
+
+  // Si no hay detalles de la reserva, mostramos un mensaje de carga
+  // para evitar errores mientras el useEffect hace la redirección.
+  if (!bookingDetails) {
+    return (
+      <div className="page-wrapper">
+        <p>Cargando detalles de la reserva...</p>
+      </div>
+    );
   }
+  
+  // Extraemos los datos del contexto para usarlos más fácilmente
+  const { establishment, service, date, slot } = bookingDetails;
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError('');
 
-    // Construimos la fecha y hora completa en formato ISO UTC
-    const startTimeISO = new Date(`${date}T${slot}:00`).toISOString();
+    // --- 3. CONSTRUIMOS LA FECHA COMPLETA EN UTC ---
+    // La 'date' guardada en el contexto ya es un string ISO
+    // El 'slot' es 'HH:MM'. Los combinamos para crear un objeto Date válido
+    // y luego lo convertimos a ISO string para la API.
+    const datePart = new Date(date).toISOString().split('T')[0];
+    const startTimeISO = new Date(`${datePart}T${slot}:00`).toISOString();
 
     try {
       await createAppointment({
@@ -35,7 +56,10 @@ const ConfirmBookingPage = () => {
         notes_client: notes,
       });
       
-      // Si todo va bien, redirigimos a una página de éxito
+      // --- 4. LIMPIAMOS EL CONTEXTO TRAS EL ÉXITO ---
+      // Esto es importante para que no queden datos de reservas antiguas
+      clearBookingInfo();
+
       navigate('/booking/success');
 
     } catch (err) {
@@ -45,7 +69,8 @@ const ConfirmBookingPage = () => {
     }
   };
 
-  const formattedDate = new Date(`${date}T${slot}`).toLocaleDateString('es-ES', {
+  // El formateo de la fecha ahora usa el string ISO guardado en el contexto
+  const formattedDate = new Date(date).toLocaleDateString('es-ES', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 

@@ -6,7 +6,7 @@ import { getEstablishmentById, updateEstablishment } from '../services/establish
 
 const EditEstablishment = () => {
   // Hooks para obtener el ID de la URL y para la navegación
-  const { id } = useParams();
+  const { establishmentId } = useParams();
   const navigate = useNavigate();
   
   // Estado para los datos del formulario. Lo inicializamos vacío para evitar errores de "uncontrolled component"
@@ -31,8 +31,8 @@ const EditEstablishment = () => {
     const fetchEstablishment = async () => {
       try {
         setLoading(true);
-        const data = await getEstablishmentById(id);
-        // Nos aseguramos de que todos los campos del formulario tengan un valor
+        // Usamos establishmentId, que es más descriptivo
+        const data = await getEstablishmentById(establishmentId);
         setFormData({
             nombre: data.nombre || '',
             direccion_completa: data.direccion_completa || '',
@@ -50,7 +50,7 @@ const EditEstablishment = () => {
       }
     };
     fetchEstablishment();
-  }, [id]); // El efecto depende del 'id' de la URL
+  }, [establishmentId]); // La dependencia ahora es establishmentId
 
   // Maneja los cambios en cualquier campo del formulario
   const handleChange = (e) => {
@@ -67,8 +67,9 @@ const EditEstablishment = () => {
     setSubmitting(true);
     setError(null);
     try {
-      await updateEstablishment(id, formData);
-      navigate('/provider/establishments'); // Volver a la lista tras el éxito
+      await updateEstablishment(establishmentId, formData);
+      // --- RUTA DE REDIRECCIÓN CORREGIDA ---
+      navigate('/dashboard/provider/establishments'); // Volver a la lista tras el éxito
     } catch (err) {
       setError(err.message || 'Error al actualizar el establecimiento.');
     } finally {
@@ -143,7 +144,7 @@ const EditEstablishment = () => {
           
           {/* Botones de Acción */}
           <div className="flex justify-end pt-4 space-x-4">
-            <button type="button" onClick={() => navigate('/provider/establishments')} className="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300">
+            <button type="button" onClick={() => navigate('/dashboard/provider/establishments')} className="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300">
               Cancelar
             </button>
             <button type="submit" disabled={submitting} className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50">

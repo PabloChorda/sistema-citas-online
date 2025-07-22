@@ -34,7 +34,7 @@ const CreateEstablishment = () => {
       await createEstablishment(formData);
       
       // Si todo va bien, navegamos de vuelta a la lista de establecimientos
-      navigate('/provider/establishments');
+      navigate('/dashboard/provider/establishments');
       
     } catch (err) {
       // Si la API devuelve un error, lo mostramos al usuario
