@@ -141,3 +141,36 @@ def send_appointment_confirmation_emails(appointment):
     send_email(provider_subject, [provider_email], html=provider_html)
     
     return True
+
+# --- NUEVA FUNCIÓN AÑADIDA ---
+
+def send_appointment_reminder_email(appointment):
+    """
+    Envía un correo de recordatorio de cita al cliente.
+    """
+    if not appointment or not appointment.user or not appointment.service:
+        current_app.logger.warning(f"Intento de enviar recordatorio para cita incompleta ID: {appointment.id if appointment else 'N/A'}")
+        return False
+
+    client = appointment.user
+    service = appointment.service
+    establishment = service.establishment
+    
+    provider_timezone = establishment.provider.timezone or 'UTC'
+    formatted_start_time = format_datetime_for_email(appointment.start_time, provider_timezone)
+
+    subject = f"⏰ Recordatorio de tu cita mañana: {service.nombre}"
+    html_body = f"""
+        <p>Hola <strong>{client.first_name or 'tú'}</strong>,</p>
+        <p>Solo un recordatorio amistoso sobre tu cita de mañana.</p>
+        <ul>
+            <li><strong>Establecimiento:</strong> {establishment.nombre}</li>
+            <li><strong>Dirección:</strong> {establishment.direccion_completa}</li>
+            <li><strong>Servicio:</strong> {service.nombre}</li>
+            <li><strong>Día y Hora:</strong> {formatted_start_time}</li>
+        </ul>
+        <p>Si necesitas reprogramar o cancelar, por favor, contacta con el establecimiento o gestiona tu cita desde tu panel de control.</p>
+        <p>¡Te esperamos!</p>
+    """
+    
+    return send_email(subject, [client.email], html=html_body)

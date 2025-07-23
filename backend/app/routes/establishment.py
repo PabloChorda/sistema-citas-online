@@ -55,7 +55,7 @@ def get_available_slots(establishment_id):
         return jsonify({"msg": "Los parámetros 'date' y 'service_id' son requeridos."}), 400
 
     try:
-        requested_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        requested_dt_naive = datetime.strptime(date_str, '%Y-%m-%d')
         service_id = int(service_id_str)
     except (ValueError, TypeError):
         return jsonify({"msg": "Formato de fecha o service_id inválido."}), 400
@@ -78,21 +78,16 @@ def get_available_slots(establishment_id):
     except Exception:
         return jsonify({"msg": "Error de configuración de zona horaria en el servidor."}), 500
 
-    # --- Lógica de cálculo de huecos ---
-    service_duration = timedelta(minutes=service.duracion_minutos)
-    # Define el "paso" o la granularidad de los huecos. 15 minutos es un buen estándar.
-    slot_increment = timedelta(minutes=15) 
-
+    start_of_day_local = datetime.combine(requested_dt_naive.date(), time.min, tzinfo=provider_tz)
     day_map = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
-    day_of_week = day_map.get(requested_date.weekday())
+    day_of_week = day_map.get(start_of_day_local.weekday())
     
     if not day_of_week: return jsonify([]), 200
 
     availability_rules = AvailabilityRule.query.filter_by(establishment_id=establishment_id, dia_semana=day_of_week, activo=True).all()
     if not availability_rules: return jsonify([]), 200
 
-    # 1. Obtener citas existentes y convertirlas a UTC
-    start_of_day_utc = datetime.combine(requested_date, time.min, tzinfo=provider_tz).astimezone(timezone.utc)
+    start_of_day_utc = start_of_day_local.astimezone(timezone.utc)
     end_of_day_utc = start_of_day_utc + timedelta(days=1)
     
     existing_appointments = Appointment.query.join(Service).filter(
@@ -104,40 +99,29 @@ def get_available_slots(establishment_id):
     
     booked_slots = [{'start': appt.start_time, 'end': appt.end_time} for appt in existing_appointments]
 
-    # 2. Generar y filtrar huecos
     final_slots = []
+    service_duration = timedelta(minutes=service.duracion_minutos)
+    slot_increment = timedelta(minutes=15)
     now_utc = datetime.now(timezone.utc)
 
     for rule in availability_rules:
-        # Convertimos los horarios de apertura a UTC
-        start_dt_local = datetime.combine(requested_date, rule.hora_inicio, tzinfo=provider_tz)
-        end_dt_local = datetime.combine(requested_date, rule.hora_fin, tzinfo=provider_tz)
+        start_dt_local_rule = datetime.combine(start_of_day_local.date(), rule.hora_inicio, tzinfo=provider_tz)
+        end_dt_local_rule = datetime.combine(start_of_day_local.date(), rule.hora_fin, tzinfo=provider_tz)
         
-        current_slot_start = start_dt_local.astimezone(timezone.utc)
-        working_end = end_dt_local.astimezone(timezone.utc)
+        current_slot_start = start_dt_local_rule.astimezone(timezone.utc)
+        working_end = end_dt_local_rule.astimezone(timezone.utc)
 
         while current_slot_start + service_duration <= working_end:
-            # Solo consideramos huecos que aún no han pasado
             if current_slot_start >= now_utc:
-                
                 slot_end = current_slot_start + service_duration
-                
-                # Comprobamos si el hueco se solapa con alguna cita existente
-                is_booked = any(
-                    (current_slot_start < booked['end'] and slot_end > booked['start'])
-                    for booked in booked_slots
-                )
-
+                is_booked = any((current_slot_start < booked['end'] and slot_end > booked['start']) for booked in booked_slots)
                 if not is_booked:
-                    # Convertimos de vuelta a la zona horaria del proveedor para mostrar
                     slot_in_provider_tz = current_slot_start.astimezone(provider_tz)
                     final_slots.append(slot_in_provider_tz.strftime('%H:%M'))
             
-            # Avanzamos al siguiente posible hueco usando el incremento definido
             current_slot_start += slot_increment
             
     return jsonify(sorted(list(set(final_slots)))), 200
-
 
 # --- RUTAS PRIVADAS (requieren autenticación) ---
 

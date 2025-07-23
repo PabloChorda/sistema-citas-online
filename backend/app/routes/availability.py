@@ -2,7 +2,7 @@
 
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import time
+#from datetime import time
 from app import db
 from app.models import AvailabilityRule, Establishment, User
 
@@ -16,37 +16,12 @@ def get_provider_id_from_jwt():
     except (ValueError, TypeError):
         return None
 
-# --- Endpoints para AvailabilityRule ---
-
 @availability_bp.route('/establishments/<int:establishment_id>/availability', methods=['POST'])
 @jwt_required()
 def create_availability_rule(establishment_id):
     """
     POST /establishments/<id>/availability
-    ======================================
-    🔐 Crea una regla de disponibilidad para un establecimiento específico.
-
-    Define en qué día de la semana y horario un establecimiento estará disponible.
-
-    Requisitos:
-    - Usuario autenticado con JWT y rol "provider".
-    - El proveedor debe ser el propietario del establecimiento.
-
-    JSON esperado (Body):
-    ----------------------
-    {
-        "dia_semana": "LUNES",     # (LUNES, MARTES, etc., en mayúsculas)
-        "hora_inicio": "09:00",    # Formato HH:MM o HH:MM:SS
-        "hora_fin": "17:00"        # Formato HH:MM o HH:MM:SS
-    }
-
-    Respuestas:
-    - ✅ 201 Created: { "msg": "...", "rule": { ... } }
-    - ⚠️ 400 Bad Request: Datos faltantes, formato inválido, o rango de tiempo incorrecto.
-    - ⚠️ 403 Forbidden: No es el propietario del establecimiento.
-    - ⚠️ 404 Not Found: Establecimiento no encontrado.
-    - ❌ 422 Unprocessable Entity: Token inválido.
-    - ❌ 500 Internal Server Error: Fallo en la base de datos.
+    Crea una regla de disponibilidad para un establecimiento específico.
     """
     provider_id = get_provider_id_from_jwt()
     if not provider_id:
@@ -68,24 +43,31 @@ def create_availability_rule(establishment_id):
         return jsonify({"msg": f"Faltan datos requeridos: {', '.join(required_fields)}"}), 400
 
     try:
-        hora_inicio_obj = time.fromisoformat(data['hora_inicio'])
-        hora_fin_obj = time.fromisoformat(data['hora_fin'])
-
+        # Pasamos los strings directamente. El modelo se encarga de la validación.
         new_rule = AvailabilityRule(
             establishment_id=establishment_id,
             dia_semana=data['dia_semana'].upper(),
-            hora_inicio=hora_inicio_obj,
-            hora_fin=hora_fin_obj
+            hora_inicio=data['hora_inicio'],
+            hora_fin=data['hora_fin']
         )
         db.session.add(new_rule)
         db.session.commit()
-        return jsonify({"msg": "Regla de disponibilidad creada exitosamente", "rule": new_rule.to_dict()}), 201
+        
+        # Devolvemos un 201 Created con los datos de la nueva regla
+        return jsonify({
+            "msg": "Regla de disponibilidad creada exitosamente",
+            "rule": new_rule.to_dict()
+        }), 201
+        
     except ValueError as ve:
         db.session.rollback()
+        # Este error viene de los validadores del modelo
+        current_app.logger.warning(f"Error de validación al crear regla de disponibilidad: {ve}")
         return jsonify({"msg": str(ve)}), 400
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error al crear regla para est. {establishment_id}: {e}", exc_info=True)
+        # Cualquier otro error (ej. de la base de datos)
+        current_app.logger.error(f"Error inesperado al crear regla para est. {establishment_id}: {e}", exc_info=True)
         return jsonify({"msg": "Error interno al crear la regla."}), 500
 
 
