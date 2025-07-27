@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 
+import Card from '../components/ui/Card';
+
 // Componentes
 import ServiceList from '../components/provider/ServiceList';
 import ServiceModal from '../components/provider/ServiceModal';
@@ -22,28 +24,25 @@ const ManageServices = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [serviceToEdit, setServiceToEdit] = useState(null);
 
-  useEffect(() => {
-    if (!establishmentId) {
-      setServices([]);
-      return;
+  // --- useCallback es una buena práctica aquí para evitar recrear la función ---
+  const fetchServices = useCallback(async () => {
+    if (!establishmentId) return;
+    try {
+      setLoading(true);
+      const servicesData = await getServicesByEstablishment(establishmentId);
+      setServices(servicesData || []);
+      setError(null);
+    } catch (err) {
+      setError('No se pudieron cargar los servicios para este establecimiento.');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-
-    const fetchServicesForId = async () => {
-      try {
-        setLoading(true);
-        const servicesData = await getServicesByEstablishment(establishmentId);
-        setServices(servicesData || []);
-        setError(null);
-      } catch (err) {
-        setError('No se pudieron cargar los servicios para este establecimiento.');
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchServicesForId();
   }, [establishmentId]);
+
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
 
   const handleOpenModal = (service = null) => {
     setServiceToEdit(service);
@@ -56,20 +55,14 @@ const ManageServices = () => {
   };
 
   const handleSaveService = async (formData) => {
-    if (!establishmentId) {
-      alert("No hay un establecimiento seleccionado para guardar el servicio.");
-      return;
-    }
+    if (!establishmentId) return;
 
-    // --- CORRECCIÓN: CONVERSIÓN DE TIPOS DE DATOS ---
     const processedData = {
       ...formData,
-      // Convertimos los valores de string a número antes de enviar
       duracion_minutos: parseInt(formData.duracion_minutos, 10),
       precio: parseFloat(formData.precio),
     };
 
-    // Verificación de que la conversión fue exitosa
     if (isNaN(processedData.duracion_minutos) || isNaN(processedData.precio)) {
         alert("Por favor, introduce valores numéricos válidos para duración y precio.");
         return;
@@ -77,20 +70,13 @@ const ManageServices = () => {
 
     try {
       if (serviceToEdit) {
-        // Enviamos los datos procesados
         await updateService(serviceToEdit.id, processedData);
       } else {
-        // Enviamos los datos procesados
         await createService(establishmentId, processedData);
       }
       handleCloseModal();
-      
-      // Refrescamos la lista para ver los cambios
-      const updatedServices = await getServicesByEstablishment(establishmentId);
-      setServices(updatedServices || []);
-
+      await fetchServices(); // Recargamos la lista para ver los cambios
     } catch (saveError) {
-      // El mensaje de error de la API ahora debería ser más específico si hay otros problemas
       alert(`Error al guardar: ${saveError.message || 'Ocurrió un error.'}`);
       console.error("Error al guardar el servicio:", saveError);
     }
@@ -101,9 +87,7 @@ const ManageServices = () => {
     if (window.confirm('¿Estás seguro de que quieres eliminar este servicio?')) {
       try {
         await deleteService(serviceId);
-        // Refrescamos la lista
-        const updatedServices = await getServicesByEstablishment(establishmentId);
-        setServices(updatedServices || []);
+        await fetchServices(); // Recargamos la lista
       } catch (deleteError) {
         alert(`Error al eliminar: ${deleteError.message || 'Ocurrió un error.'}`);
         console.error("Error al eliminar el servicio:", deleteError);
@@ -118,12 +102,13 @@ const ManageServices = () => {
         <header className="page-header">
           <h1>Gestionar Servicios</h1>
         </header>
-        <div className="profile-card p-10">
+        {/* --- 2. USAMOS EL COMPONENTE CARD AQUÍ --- */}
+        <Card className="p-10"> {/* Podemos añadir clases extra si es necesario */}
           <p className="text-lg text-gray-600">Por favor, selecciona un establecimiento para ver sus servicios.</p>
           <Link to="/dashboard/provider/establishments" className="mt-4 inline-block text-indigo-600 hover:underline font-semibold">
             Ir a la lista de mis establecimientos
           </Link>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -140,7 +125,8 @@ const ManageServices = () => {
         <AddServiceButton onClick={() => handleOpenModal()} />
       </div>
 
-      <div className="profile-card">
+      {/* --- 3. USAMOS EL COMPONENTE CARD AQUÍ TAMBIÉN --- */}
+      <Card>
         {loading && <p className="p-4">Cargando servicios...</p>}
         {error && <p className="error-message p-4">{error}</p>}
         
@@ -151,7 +137,7 @@ const ManageServices = () => {
             onDeleteService={handleDeleteService}
           />
         )}
-      </div>
+      </Card>
 
       <ServiceModal
         isOpen={isModalOpen}

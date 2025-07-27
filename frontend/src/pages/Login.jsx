@@ -1,18 +1,20 @@
 // frontend/src/pages/Login.jsx
 
 import { useState } from 'react';
-// --- 1. IMPORTAMOS useLocation ---
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { loginUser, loginWithGoogle } from '../services/authService';
 import GoogleLoginComponent from "./GoogleLoginComponent";
 import '../styles/Login.css';
+
+// --- IMPORTAMOS LOS NUEVOS COMPONENTES DE UI ---
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input'; 
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   
-  // --- 2. INICIALIZAMOS LOS HOOKS ---
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -23,9 +25,6 @@ function Login({ onLogin }) {
         const data = await loginUser(email, password);
         onLogin(data.access_token, data.role);
         
-        // --- 3. LÓGICA DE REDIRECCIÓN INTELIGENTE ---
-        // Buscamos la ruta a la que el usuario intentaba ir.
-        // Si no existe, lo mandamos al dashboard por defecto.
         const from = location.state?.from?.pathname || '/dashboard';
         navigate(from, { replace: true });
 
@@ -40,7 +39,6 @@ function Login({ onLogin }) {
       const data = await loginWithGoogle(googleToken);
       onLogin(data.access_token, data.role);
       
-      // --- 4. APLICAMOS LA MISMA LÓGICA AL LOGIN DE GOOGLE ---
       const from = location.state?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
 
@@ -67,10 +65,27 @@ function Login({ onLogin }) {
           <hr style={{ flexGrow: 1, borderTop: '1px solid #e5e7eb' }} />
         </div>
 
+        {/* --- FORMULARIO REFACTORIZADO --- */}
         <form onSubmit={handleSubmit}>
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required />
-          <button type="submit">Entrar</button>
+          {/* Reemplazamos <input> con nuestro componente <Input> */}
+          <Input 
+            type="email" 
+            placeholder="Email" 
+            value={email} 
+            onChange={(e) => setEmail(e.target.value)} 
+            required 
+          />
+          <Input 
+            type="password" 
+            placeholder="Contraseña" 
+            value={password} 
+            onChange={(e) => setPassword(e.target.value)} 
+            required 
+          />
+          {/* Reemplazamos <button> con nuestro componente <Button> */}
+          <Button type="submit" variant="primary">
+            Entrar
+          </Button>
         </form>
 
         {message && <p className="login-message" style={{ color: 'red' }}>{message}</p>}

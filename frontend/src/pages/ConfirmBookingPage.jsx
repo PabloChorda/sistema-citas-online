@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Button from '../components/ui/Button';
 
 // --- 1. IMPORTAMOS NUESTRO HOOK Y EL SERVICIO ---
 import { useBooking } from '../context/BookingContext';
@@ -108,13 +109,9 @@ const ConfirmBookingPage = () => {
         {error && <p className="error-message mt-4">{error}</p>}
         
         <div className="flex justify-end mt-6">
-          <button 
-            onClick={handleSubmit} 
-            disabled={isSubmitting}
-            className="inline-flex justify-center py-2 px-6 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300"
-          >
-            {isSubmitting ? 'Confirmando...' : 'Confirmar Cita'}
-          </button>
+        <Button onClick={handleSubmit} disabled={isSubmitting} variant="primary">
+          {isSubmitting ? 'Confirmando...' : 'Confirmar Cita'}
+        </Button>
         </div>
       </div>
     </div>
