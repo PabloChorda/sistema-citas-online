@@ -25,6 +25,8 @@ import BookingSuccessPage from './pages/BookingSuccessPage';
 import ClientAppointments from './pages/ClientAppointments';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import ProviderAppointments from './pages/ProviderAppointments';
+import ProviderDashboard from './pages/ProviderDashboard';
+
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
@@ -53,10 +55,11 @@ function App() {
     setRole(null);
   };
 
+
   return (
     <Router>
       <Routes>
-        {/* --- 1. RUTAS PÚBLICAS --- */}
+        {/* --- RUTAS PÚBLICAS --- */}
         <Route path="/" element={<BrowsePage />} />
         <Route path="/booking/:establishmentId" element={<BookingPage />} />
         <Route path="/booking/success" element={<BookingSuccessPage />} />
@@ -66,13 +69,22 @@ function App() {
         <Route path="/reset-password/:token" element={<NewPasswordForm />} />
         <Route path="/register/reset-password" element={<ResetPassword />} />
 
-        {/* --- 2. RUTAS PROTEGIDAS --- */}
+        {/* --- RUTAS PROTEGIDAS --- */}
         <Route element={<ProtectedRoute token={token} />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
           <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
-            <Route index element={<WelcomeDashboard />} />
+            
+            {/* --- 2. RUTA ÍNDICE AHORA ES CONDICIONAL --- */}
+            <Route 
+              index 
+              element={
+                role === 'provider' 
+                  ? <ProviderDashboard />    // <-- Si es proveedor, muestra el nuevo dashboard
+                  : <WelcomeDashboard />   // <-- Para otros roles (cliente), muestra la bienvenida
+              } 
+            />
 
-            {/* --- GRUPO DE RUTAS PARA PROVEEDOR --- */}
+            {/* --- GRUPO DE RUTAS PARA PROVEEDOR (sin cambios) --- */}
             {role === 'provider' && (
               <Route path="provider">
                 <Route path="profile" element={<ProviderProfile />} />
@@ -85,7 +97,7 @@ function App() {
               </Route>
             )}
 
-            {/* --- GRUPO DE RUTAS PARA CLIENTE --- */}
+            {/* --- GRUPO DE RUTAS PARA CLIENTE (sin cambios) --- */}
             {role === 'client' && (
               <Route path="client">
                 <Route path="profile" element={<ClientProfile />} />
@@ -97,14 +109,14 @@ function App() {
           </Route>
         </Route>
         
-        {/* --- 3. RUTA COMODÍN FINAL --- */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   );
 }
 
-// ... (tus componentes auxiliares se mantienen igual)
+// --- COMPONENTES AUXILIARES ---
+
 const WelcomeDashboard = () => (
     <div className="page-wrapper">
         <header className="page-header">

@@ -9,7 +9,7 @@ from flask_jwt_extended import JWTManager
 import logging
 from flask_mail import Mail
 
-# Inicializar extensiones globalmente
+# Inicializar extensiones globalmente SIN VINCULARLAS A LA APP
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
@@ -22,62 +22,45 @@ def create_app(config_class_object):
     app = Flask(__name__) 
     app.config.from_object(config_class_object)
 
-    # Configurar logging ANTES de cualquier otra cosa
+    # Configurar logging
     configure_logging(app)
     app.logger.info(f"Aplicación Flask '{app.name}' inicializándose con config: {config_class_object.__name__}")
     
-    # Verificar configuración crítica
-    verify_critical_config(app)
-
-    # Inicializar extensiones
+    # Inicializar extensiones CON la app
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     mail.init_app(app)
     
-    CORS(app, supports_credentials=True)
-
-    # --- REGISTRO DE BLUEPRINTS ---
-    # Importamos y registramos cada blueprint directamente.
-    from app.routes import (
-        auth_bp, provider_bp, client_bp, service_bp, 
-        establishment_bp, email_service_bp, availability_bp, appointment_bp, email_service_bp
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": "http://localhost:5173"}},
+        supports_credentials=True,
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
     )
-    app.register_blueprint(auth_bp, url_prefix='/api/auth')
-    app.register_blueprint(provider_bp, url_prefix='/api/provider')
-    app.register_blueprint(client_bp, url_prefix='/api/client')
-    app.register_blueprint(service_bp, url_prefix='/api')
-    app.register_blueprint(establishment_bp, url_prefix='/api')
-    app.register_blueprint(availability_bp, url_prefix='/api')
-    app.register_blueprint(appointment_bp, url_prefix='/api')
-    app.register_blueprint(email_service_bp, url_prefix='/api/email')
-    
-    app.logger.info("Todos los blueprints han sido registrados.")
 
-    # Importar modelos para que SQLAlchemy los conozca
+    # --- CAMBIO CRÍTICO: IMPORTACIONES DENTRO DE LA FUNCIÓN Y CONTEXTO ---
     with app.app_context():
+        # 1. Importar modelos primero
         from . import models
-        app.logger.info("Modelos importados correctamente en el contexto de la aplicación.")
+        app.logger.info("Modelos importados.")
 
-    # --- RUTAS DE UTILIDAD ---
-    @app.route('/health') 
-    def health_check():
-        return jsonify({"status": "ok"}), 200
+        # 2. Importar y registrar blueprints DESPUÉS de que todo esté listo
+        from app.routes import bp_api
+        app.register_blueprint(bp_api, url_prefix='/api')
+        app.logger.info("Blueprint principal 'bp_api' registrado.")
 
-    @app.route('/')
-    def root():
-        return jsonify({"message": "API del Sistema de Citas Online"}), 200
+        # --- RUTAS DE UTILIDAD ---
+        @app.route('/health') 
+        def health_check():
+            return jsonify({"status": "ok"}), 200
 
-    # Opcional: Listar todas las rutas registradas al final para debugging
-    with app.app_context():
-        app.logger.info("=== RUTAS FINALES REGISTRADAS ===")
-        rules = []
-        for rule in app.url_map.iter_rules():
-            methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
-            rules.append(f"{rule.endpoint:30s} {methods:20s} {rule.rule}")
-        for line in sorted(rules):
-            app.logger.info(line)
-        app.logger.info("===================================")
+        @app.route('/')
+        def root():
+            return jsonify({"message": "API del Sistema de Citas Online"}), 200
+        
+        # ... (puedes añadir el log de listar rutas aquí si quieres)
 
     app.logger.info("Aplicación Flask creada y configurada exitosamente.")
     

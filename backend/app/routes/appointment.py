@@ -1,11 +1,13 @@
 # backend/app/routes/appointment.py
 
+print("--- [DEBUG] El archivo appointment.py se está importando ---")
+
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import Appointment, Service, User
 from datetime import datetime, timedelta, timezone
-from .email_service import send_appointment_confirmation_emails
+#from .email_service import send_appointment_confirmation_emails
 
 appointment_bp = Blueprint('appointment', __name__)
 
@@ -15,7 +17,7 @@ def get_user_id_from_jwt():
     except (ValueError, TypeError):
         return None
 
-@appointment_bp.route('appointments', methods=['POST'])
+@appointment_bp.route('/appointments', methods=['POST'])
 @jwt_required()
 def create_appointment():
     """
@@ -69,6 +71,7 @@ def create_appointment():
     ❌ 422 Unprocessable Entity:
         - El token JWT es inválido o malformado.
     """
+    from .email_service import send_appointment_confirmation_emails
     user_id = get_user_id_from_jwt()
     if not user_id: return jsonify({"msg": "Token inválido"}), 422
 
@@ -120,7 +123,7 @@ def create_appointment():
     # Devolvemos la respuesta al frontend como siempre.
     return jsonify(new_appointment.to_dict()), 201    
 
-@appointment_bp.route('appointments/client', methods=['GET'])
+@appointment_bp.route('/appointments/client', methods=['GET'])
 @jwt_required()
 def get_client_appointments():
     """
@@ -155,7 +158,7 @@ def get_client_appointments():
     appointments = Appointment.query.filter_by(user_id=user_id).order_by(Appointment.start_time.desc()).all()
     return jsonify([appt.to_dict() for appt in appointments]), 200
 
-@appointment_bp.route('appointments/<int:appointment_id>/cancel', methods=['PUT'])
+@appointment_bp.route('/appointments/<int:appointment_id>/cancel', methods=['PUT'])
 @jwt_required()
 def cancel_appointment(appointment_id):
     """
