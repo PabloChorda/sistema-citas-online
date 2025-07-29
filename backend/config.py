@@ -7,6 +7,10 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = 3600
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "isolation_level": "READ COMMITTED",
+    }
+
     # Configuración de PostgreSQL leída de variables de entorno
     DB_USER = os.environ.get('DB_USER')
     DB_PASSWORD = os.environ.get('DB_PASSWORD')

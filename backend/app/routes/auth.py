@@ -10,7 +10,7 @@ from .email_service import send_login_notification, send_account_validation_emai
 from app.utils.tokens import generate_validation_token
 from datetime import datetime
 from app import db
-from app.models import User
+from app.models import User, Provider
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from flask_cors import cross_origin
@@ -41,9 +41,6 @@ def register_provider():
     if missing_fields:
         return jsonify({"msg": f"Faltan datos requeridos: {', '.join(missing_fields)}"}), 400
 
-    from app import db
-    from app.models import User, Provider
-
     email = data.get('email')
     if User.query.filter_by(email=email).first():
         return jsonify({"msg": "El email ya está registrado"}), 409
@@ -53,25 +50,20 @@ def register_provider():
         return jsonify({"msg": "El CIF ya está registrado"}), 409
 
     try:
+        # Crear el objeto User
         new_user = User(
             email=email,
             role='provider',
             first_name=data.get('first_name'),
-            last_name=data.get('last_name'),
-            phone_number=data.get('phone_number')
+            last_name=data.get('last_name')
+            # El campo phone_number del User es para el teléfono de la cuenta,
+            # el de Provider es el público. Decide cuál quieres guardar aquí.
         )
         new_user.set_password(data.get('password'))
         
-        db.session.add(new_user)
-        
-        # Hacemos un "flush" para enviar el usuario a la BD y obtener su ID generado,
-        # sin confirmar la transacción todavía.
-        db.session.flush()
-
-        # Ahora que new_user.user_id tiene un valor, lo usamos para la clave primaria de Provider.
+        # Crear el objeto Provider y asociarlo.
         new_provider_profile = Provider(
-            provider_id=new_user.user_id,  # Asignamos explícitamente la Clave Primaria
-            user=new_user,                 # Mantenemos la asignación del objeto para la relación
+            user=new_user,
             nombre_comercial=data.get('nombre_comercial'),
             cif=cif,
             tipo_empresa=data.get('tipo_empresa'),
@@ -80,18 +72,27 @@ def register_provider():
             email_contacto=data.get('email_contacto'),
             web=data.get('web'),
             timezone=data.get('timezone', 'Europe/Madrid'),
-            idiomas_hablados=data.get('idiomas_hablados'),
+            idiomas_hablados=data.get('idiomas_hablados', []),
             direccion_fiscal=data.get('direccion_fiscal')
         )
         
+        db.session.add(new_user)
         db.session.add(new_provider_profile)
         db.session.commit()
 
-        token = generate_validation_token(new_user.email)
-        send_account_validation_email(new_user, token)
+        # --- SECCIÓN AÑADIDA ---
+        # Generamos el token de validación y enviamos el email
+        try:
+            token = generate_validation_token(new_user.email)
+            send_account_validation_email(new_user, token)
+            current_app.logger.info(f"Email de validación enviado a {new_user.email}")
+        except Exception as email_error:
+            # Si el envío de email falla, no rompemos el registro, solo lo registramos.
+            current_app.logger.error(f"FALLO al enviar email de validación a {new_user.email}: {email_error}")
+        # --- FIN DE LA SECCIÓN AÑADIDA ---
 
         return jsonify({
-            "msg": "Proveedor registrado exitosamente!",
+            "msg": "Proveedor registrado exitosamente! Se ha enviado un correo de validación.",
             "user": new_user.to_dict(),
             "provider_profile": new_provider_profile.to_dict()
         }), 201

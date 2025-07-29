@@ -1,160 +1,471 @@
-/* General reset & layout */
+/* frontend/src/styles/App.css */
+
+/* --- RESET Y ESTILOS GLOBALES --- */
 * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-  
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center; /* Centra el contenido verticalmente en la página */
+  justify-content: center; /* Centra el contenido horizontalmente */
+  padding: 2rem 1rem;
+}
+
+/* --- ESTILOS PARA LAS PÁGINAS DE LOGIN/REGISTRO --- */
+.login-container {
+  background-color: white;
+  width: 100%;
+  max-width: 480px; /* Ancho máximo para formularios de auth */
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Clave para que los bordes redondeados del header funcionen */
+}
+
+.login-box {
+  padding: 2.5rem; /* Más espaciado interno */
+  display: flex;
+  flex-direction: column;
+}
+
+.login-header {
+  background-color: #4f46e5;
+  color: white;
+  padding: 1.5rem 2rem;
+  text-align: center;
+}
+
+.login-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.login-header p {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  margin-top: 0.25rem;
+}
+
+.login-box form {
+  display: flex;
+  flex-direction: column;
+  margin-top: 1.5rem; /* Espacio entre el header y el formulario */
+}
+
+.login-box .form-input {
+  margin-bottom: 1rem;
+  padding: 0.9rem;
+  font-size: 1rem;
+  border: 1px solid #d1d5db; /* Gris más suave */
+  border-radius: 8px; /* Bordes más redondeados */
+  background-color: #f9fafb;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-box input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
+.login-box button[type="submit"] {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #4f46e5;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.login-box button[type="submit"]:hover {
+  background-color: #4338ca;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.login-message {
+  text-align: center;
+  margin-top: 1.25rem;
+  padding: 0.75rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.login-footer {
+  text-align: center;
+  font-size: 0.9rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e5e7eb;
+  color: #6b7280;
+}
+
+.login-footer p {
+  margin-bottom: 0.5rem;
+}
+
+.login-footer a {
+  color: #4f46e5;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.login-footer a:hover {
+  text-decoration: underline;
+}
+
+
+/* --- LAYOUT DEL DASHBOARD --- */
+.dashboard-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  position: fixed; /* Ocupa toda la pantalla */
+  top: 0;
+  left: 0;
+  padding: 2.5vh 2.5vw;
+  background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+}
+
+.dashboard-panel {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  overflow: hidden;
+  background-color: #ffffff;
+}
+
+.sidebar {
+  width: 250px;
+  flex-shrink: 0;
+  background: #111827; /* Negro más profundo */
+  color: white;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-brand {
+  text-align: center;
+  margin-bottom: 2.5rem;
+  color: #f9fafb;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.sidebar-nav {
+  flex-grow: 1;
+}
+
+.sidebar-nav ul {
+  list-style: none;
+  padding: 0;
+}
+
+.sidebar-nav li {
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-nav a:hover {
+  background-color: #374151;
+}
+
+.sidebar-footer button {
+  width: 100%;
+  padding: 0.75rem;
+  background: #374151;
+  color: #e5e7eb;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.sidebar-footer button:hover {
+  background: #4b5563;
+}
+
+.main-content {
+  flex-grow: 1;
+  padding: 2.5rem;
+  overflow-y: auto;
+  background: #f9fafb;
+}
+
+/* --- ESTILOS PARA LAS PÁGINAS DENTRO DEL DASHBOARD --- */
+.page-header {
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.page-header h1 {
+  font-size: 2rem;
+  color: #111827;
+  margin: 0;
+}
+
+.page-header p {
+  font-size: 1rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+/* --- ESTILOS PARA LAS TARJETAS DE PERFIL --- */
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.profile-card {
+  width: 100%;
+  padding: 2rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  background-color: #ffffff;
+}
+
+.profile-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.profile-card-header h3 {
+  color: #111827;
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.profile-card p {
+  color: #4b5563;
+  line-height: 1.7;
+  margin-bottom: 0.75rem;
+  display: flex;
+}
+
+.profile-card p strong {
+  color: #1f2937;
+  min-width: 180px; /* Alineación vertical de los datos */
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+.readonly-indicator {
+  font-size: 0.75rem;
+  color: #6b7280;
+  background-color: #f3f4f6;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px; /* Píldora */
+  font-weight: 500;
+}
+
+/* --- ESTILOS PARA FORMULARIOS Y BOTONES DE EDICIÓN --- */
+.profile-card-header button {
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-left: 0.5rem;
+  transition: all 0.2s;
+}
+
+.button-save { background-color: #10b981; color: white; }
+.button-cancel { background-color: #ef4444; color: white; }
+.profile-card-header button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+.form-grid label { display: flex; flex-direction: column; }
+.form-grid label.full-width { grid-column: 1 / -1; }
+.form-grid span {
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.form-grid input, .form-grid textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.2s;
+}
+
+.form-grid input:focus, .form-grid textarea:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
+/* --- ESTILOS DE UTILIDAD --- */
+.error-message {
+  color: #b91c1c;
+  background-color: #fee2e2;
+  border: 1px solid #fca5a5;
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
+/* --- CORRECCIÓN DE COLOR DE TEXTO EN INPUTS --- */
+.login-box input,
+.form-grid input,
+.form-grid textarea {
+  color: #111827;
+}
+
+.login-box input::placeholder,
+.form-grid input::placeholder,
+.form-grid textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* --- MEDIA QUERIES PARA RESPONSIVIDAD --- */
+@media (max-width: 768px) {
   body, html {
-    min-height: 100vh; /* Asegura que el fondo siempre ocupe toda la pantalla */
-    font-family: 'Segoe UI', sans-serif;
-    background: linear-gradient(to right, #667eea, #764ba2);
-    display: block; /* Cambiamos a 'block' para un comportamiento normal */
-    padding: 20px 0; /* Añadimos padding vertical por si acaso */
+      padding: 0;
+      align-items: flex-start;
   }
   
-  /* Full Page Layout */
-.page-wrapper {
-    background-color: white;
-    width: 928px;
-    /* max-width: 1000px; */
-    min-height: 600px;
-    border-radius: 10px;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    transition: max-width 0.3s;
-    margin: 50px auto;
+  .dashboard-container, .login-container {
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
+      border-radius: 0;
+      margin: 0;
+      box-shadow: none;
   }
   
-  /* Aumentar tipografía y espaciado en pantallas grandes */
-  @media (min-width: 768px) {
-    .login-container h1 {
-      font-size: 26px;
-    }
-  
-    input, textarea {
-      font-size: 16px;
-      padding: 14px;
-    }
-  
-    button[type="submit"] {
-      font-size: 16px;
-      padding: 16px;
-    }
+  .dashboard-panel {
+      flex-direction: column;
+      height: auto;
+      min-height: 100vh;
+      width: 100%;
+      border-radius: 0;
   }
-  
-  @media (min-width: 1024px) {
-    .login-container h1 {
-      font-size: 30px;
-    }
-  
-    input, textarea {
-      font-size: 17px;
-    }
-  
-    .login-container {
-      padding: 50px;
-    }
+
+  .sidebar {
+      width: 100%;
+      height: auto;
+      flex-direction: row;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      flex-wrap: wrap;
   }
-  
-  
-  
-  .login-header {
-    background-color: #4f46e5;
-    color: white;
-    padding: 20px;
-    text-align: center;
-    font-size: 20px;
-    font-weight: bold;
-  }
-  
-  .login-container {
-    flex: 1;
-    padding: 30px;
-    display: flex;
-    flex-direction: column;
-  }
-  
-  .login-container h1 {
-    font-size: 22px;
-    margin-bottom: 25px;
-    text-align: center;
-    color: #333;
-  }
-  
-  form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  label {
-    width: 50%;
-    font-weight: 500;
-    margin-bottom: 12px;
-    color: #444;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-  
-  input, textarea {
-    margin-top: 6px;
-    padding: 10px;
-    font-size: 15px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    background-color: #f9f9f9;
-    transition: border 0.3s;
-    resize: vertical;
-    color: #111827;
-  }
-  
-  input:focus, textarea:focus {
-    border-color: #667eea;
-    outline: none;
-  }
-  
-  button[type="submit"] {
-    margin-top: 20px;
-    padding: 12px;
-    background-color: #667eea;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 15px;
-    cursor: pointer;
-    transition: background-color 0.3s, transform 0.2s;
-  }
-  
-  button[type="submit"]:hover {
-    background-color: #5a67d8;
-    transform: translateY(-1px);
-  }
-  
-  .login-message {
-    text-align: center;
-    margin-top: 15px;
-    font-weight: 600;
-    color: #d6336c;
-  }
-  
-  .login-footer {
-    background-color: #f1f1f1;
-    text-align: center;
-    font-size: 13px;
-    padding: 15px;
-    color: #666;
-  }
-  
-  .login-footer a {
-    color: #4f46e5;
-    text-decoration: none;
-  }
-  
-  .login-footer a:hover {
-    text-decoration: underline;
-  }
-  
+
+  .sidebar-brand { margin-bottom: 0; margin-right: auto; }
+  .sidebar-nav { display: flex; flex-grow: 0; }
+  .sidebar-nav ul { display: flex; }
+  .sidebar-nav li { margin: 0 0.25rem; }
+  .sidebar-footer { margin-left: 0.5rem; }
+  .main-content { padding: 1.5rem; }
+  .form-grid { grid-template-columns: 1fr; }
+}
+
+/* --- ESTILOS ESPECÍFICOS PARA EL REGISTRO DE PROVEEDOR --- */
+
+.register-provider-container {
+  max-width: 800px;
+}
+
+.provider-form {
+  width: 100%;
+}
+
+.provider-form fieldset {
+  border: 1px solid #e5e7eb;
+  padding: 2rem;
+  margin-bottom: 2.5rem;
+  border-radius: 12px;
+  background-color: #ffffff;
+  /* Usamos display: grid para controlar los campos internos */
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* Por defecto, dos columnas */
+  gap: 1.5rem; /* Espacio entre filas y columnas */
+}
+
+.provider-form legend {
+  grid-column: 1 / -1; /* El título SIEMPRE ocupa todo el ancho */
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 1rem; /* Espacio debajo del título */
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  width: 100%;
+}
+
+/* El .form-row ahora solo sirve para agrupar visualmente,
+ pero el fieldset ya lo coloca en una sola celda de la rejilla.
+ Si queremos que un campo o grupo ocupe dos columnas, usamos la clase de abajo. */
+.form-row {
+  display: contents; /* Hace que el div no tenga estilo propio y sus hijos se coloquen en la rejilla del fieldset */
+}
+
+/* CLAVE DE LA SOLUCIÓN: Esta clase fuerza a un campo a ocupar todo el ancho */
+.form-field-full-width {
+  grid-column: 1 / -1; /* Ocupa desde la primera a la última columna */
+}
+
+/* Hacemos que los inputs y textareas dentro de .form-field-full-width
+ ocupen todo el espacio de su contenedor */
+.form-field-full-width input,
+.form-field-full-width textarea {
+  width: 100%;
+}
+
+.provider-form input::placeholder,
+.provider-form textarea::placeholder {
+  color: #9ca3af;
+  opacity: 1;
+}
+
+.provider-form textarea {
+  min-height: 100px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.provider-form button[type="submit"] {
+  grid-column: 1 / -1; /* El botón también ocupa todo el ancho */
+  margin-top: 1rem;
+  padding: 1rem 1.5rem;
+  font-size: 1.1rem;
+}

@@ -17,12 +17,18 @@ print(f"FLASK_DEBUG (desde run.py después de load_dotenv): {os.environ.get('FLA
 
 # Importar create_app DESPUÉS de cargar .env y DESPUÉS de que config.py haya sido definido
 from app import create_app, db
-from app.models import User, Provider # Asegúrate que los modelos no tengan dependencias de config al importar
-from config import Config # Importa la clase Config
+from app.models import User, Provider
+from config import Config
+
+# --- 1. IMPORTAMOS NUESTRO NUEVO COMANDO ---
+from app.commands.reminders import send_reminders_command
 
 # Crear la aplicación pasando la CLASE de configuración
-# create_app ahora espera el objeto de la clase, no el nombre.
 app = create_app(Config)
+
+# --- 2. REGISTRAMOS EL COMANDO EN LA INSTANCIA DE LA APP ---
+# Esto hace que el comando "flask send-reminders" esté disponible.
+app.cli.add_command(send_reminders_command)
 
 # Contexto de aplicación para el shell de Flask (opcional pero útil)
 @app.shell_context_processor

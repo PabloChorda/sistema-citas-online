@@ -1,6 +1,7 @@
 from flask_mail import Message
 from flask import current_app, url_for, Blueprint
 from app import mail
+from zoneinfo import ZoneInfo
 
 
 bp = Blueprint('email', __name__, url_prefix='/email')
@@ -76,3 +77,100 @@ def send_password_reset_email(user, token):
         body=f"Hola {nombre}, restablece tu contraseña aquí: {reset_link}"
     )
 
+def format_datetime_for_email(dt_utc, timezone_str):
+    """Formatea una fecha/hora UTC a una zona horaria específica y legible."""
+    try:
+        provider_tz = ZoneInfo(timezone_str)
+        dt_local = dt_utc.astimezone(provider_tz)
+        # Formato amigable: "viernes, 5 de julio de 2024 a las 10:30"
+        return dt_local.strftime('%A, %d de %B de %Y a las %H:%M')
+    except:
+        # Si falla, devuelve un formato simple en UTC
+        return dt_utc.strftime('%Y-%m-%d %H:%M:%S UTC')
+
+def send_appointment_confirmation_emails(appointment):
+    """
+    Envía correos de confirmación tanto al cliente como al proveedor.
+    Esta función orquesta el envío de los dos correos.
+    """
+    if not appointment:
+        return False
+
+    client = appointment.user
+    service = appointment.service
+    establishment = service.establishment
+    provider_user = establishment.provider.user # El usuario asociado al proveedor
+
+    if not all([client, service, establishment, provider_user]):
+        current_app.logger.error(f"Faltan datos para enviar email de confirmación de cita {appointment.id}")
+        return False
+        
+    provider_timezone = establishment.provider.timezone or 'UTC'
+    formatted_start_time = format_datetime_for_email(appointment.start_time, provider_timezone)
+
+    # 1. Enviar correo al Cliente
+    client_subject = f"✅ Cita Confirmada: {service.nombre} en {establishment.nombre}"
+    client_html = f"""
+        <p>Hola <strong>{client.first_name or 'tú'}</strong>,</p>
+        <p>Tu cita ha sido confirmada con éxito. Aquí tienes los detalles:</p>
+        <ul>
+            <li><strong>Establecimiento:</strong> {establishment.nombre}</li>
+            <li><strong>Dirección:</strong> {establishment.direccion_completa}</li>
+            <li><strong>Servicio:</strong> {service.nombre}</li>
+            <li><strong>Día y Hora:</strong> {formatted_start_time}</li>
+            <li><strong>Precio:</strong> {appointment.precio_final} €</li>
+        </ul>
+        <p>¡Te esperamos!</p>
+    """
+    send_email(client_subject, [client.email], html=client_html)
+
+    # 2. Enviar correo al Proveedor (a su email de contacto si existe, si no al de la cuenta)
+    provider_email = establishment.provider.email_contacto or provider_user.email
+    provider_subject = f"🔔 Nueva Cita Reservada: {service.nombre} a las {formatted_start_time}"
+    provider_html = f"""
+        <p>¡Hola <strong>{establishment.provider.nombre_comercial}</strong>!</p>
+        <p>Has recibido una nueva reserva:</p>
+        <ul>
+            <li><strong>Cliente:</strong> {client.first_name or ''} {client.last_name or ''} ({client.email})</li>
+            <li><strong>Servicio:</strong> {service.nombre}</li>
+            <li><strong>Día y Hora:</strong> {formatted_start_time}</li>
+        </ul>
+        {f'<p><strong>Notas del cliente:</strong> {appointment.notas_cliente}</p>' if appointment.notas_cliente else ''}
+        <p>La cita ha sido añadida a tu agenda.</p>
+    """
+    send_email(provider_subject, [provider_email], html=provider_html)
+    
+    return True
+
+# --- NUEVA FUNCIÓN AÑADIDA ---
+
+def send_appointment_reminder_email(appointment):
+    """
+    Envía un correo de recordatorio de cita al cliente.
+    """
+    if not appointment or not appointment.user or not appointment.service:
+        current_app.logger.warning(f"Intento de enviar recordatorio para cita incompleta ID: {appointment.id if appointment else 'N/A'}")
+        return False
+
+    client = appointment.user
+    service = appointment.service
+    establishment = service.establishment
+    
+    provider_timezone = establishment.provider.timezone or 'UTC'
+    formatted_start_time = format_datetime_for_email(appointment.start_time, provider_timezone)
+
+    subject = f"⏰ Recordatorio de tu cita mañana: {service.nombre}"
+    html_body = f"""
+        <p>Hola <strong>{client.first_name or 'tú'}</strong>,</p>
+        <p>Solo un recordatorio amistoso sobre tu cita de mañana.</p>
+        <ul>
+            <li><strong>Establecimiento:</strong> {establishment.nombre}</li>
+            <li><strong>Dirección:</strong> {establishment.direccion_completa}</li>
+            <li><strong>Servicio:</strong> {service.nombre}</li>
+            <li><strong>Día y Hora:</strong> {formatted_start_time}</li>
+        </ul>
+        <p>Si necesitas reprogramar o cancelar, por favor, contacta con el establecimiento o gestiona tu cita desde tu panel de control.</p>
+        <p>¡Te esperamos!</p>
+    """
+    
+    return send_email(subject, [client.email], html=html_body)

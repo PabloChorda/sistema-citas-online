@@ -1,4 +1,5 @@
 # backend/app/__init__.py
+
 import os
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
@@ -8,8 +9,7 @@ from flask_jwt_extended import JWTManager
 import logging
 from flask_mail import Mail
 
-
-# Inicializar extensiones globalmente pero configurarlas en create_app
+# Inicializar extensiones globalmente SIN VINCULARLAS A LA APP
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
@@ -18,70 +18,54 @@ mail = Mail()
 def create_app(config_class_object):
     """
     Factory de la aplicación Flask.
-    Recibe un objeto de clase de configuración.
     """
     app = Flask(__name__) 
-
-    # Cargar configuración desde el objeto de clase proporcionado
     app.config.from_object(config_class_object)
 
-    # Configurar logging ANTES de cualquier otra cosa
+    # Configurar logging
     configure_logging(app)
-    
     app.logger.info(f"Aplicación Flask '{app.name}' inicializándose con config: {config_class_object.__name__}")
-
-    # Verificar configuración crítica
-    verify_critical_config(app)
-
-    # Inicializar extensiones de Flask con la app
+    
+    # Inicializar extensiones CON la app
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     mail.init_app(app)
+    
+    CORS(
+        app,
+        resources={r"/api/*": {"origins": "http://localhost:5173"}},
+        supports_credentials=True,
+        methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
+    )
 
-
-    CORS(app,
-     resources={r"/api/*": {"origins": ["http://localhost:5173"]}},
-     supports_credentials=True,
-     methods=["GET", "POST", "OPTIONS", "PUT", "DELETE"],
-     allow_headers=["Content-Type", "Authorization"]
-)
-
-
-
-    # Importar modelos aquí para que SQLAlchemy los conozca
-    try:
+    # --- CAMBIO CRÍTICO: IMPORTACIONES DENTRO DE LA FUNCIÓN Y CONTEXTO ---
+    with app.app_context():
+        # 1. Importar modelos primero
         from . import models
-        app.logger.info("Modelos importados correctamente")
-    except ImportError as e:
-        app.logger.error(f"Error importando modelos: {e}", exc_info=True)
+        app.logger.info("Modelos importados.")
 
-    # Registrar blueprints de manera segura
-    register_blueprints(app)
+        # 2. Importar y registrar blueprints DESPUÉS de que todo esté listo
+        from app.routes import bp_api
+        app.register_blueprint(bp_api, url_prefix='/api')
+        app.logger.info("Blueprint principal 'bp_api' registrado.")
 
-    # Ruta de health check
-    @app.route('/health') 
-    def health_check():
-        app.logger.info("Health check solicitado")
-        return jsonify({
-            "status": "ok", 
-            "message": "El backend del sistema de citas online está funcionando!"
-        }), 200
+        # --- RUTAS DE UTILIDAD ---
+        @app.route('/health') 
+        def health_check():
+            return jsonify({"status": "ok"}), 200
 
-    # Ruta raíz para debugging
-    @app.route('/')
-    def root():
-        return jsonify({
-            "message": "API del Sistema de Citas Online",
-            "status": "running",
-            "endpoints": {
-                "health": "/health",
-                "api": "/api/*"
-            }
-        }), 200
+        @app.route('/')
+        def root():
+            return jsonify({"message": "API del Sistema de Citas Online"}), 200
+        
+        # ... (puedes añadir el log de listar rutas aquí si quieres)
 
-    app.logger.info(f"Aplicación Flask '{app.name}' creada y configurada exitosamente")
+    app.logger.info("Aplicación Flask creada y configurada exitosamente.")
+    
     return app
+
 
 def configure_logging(app):
     """Configura el sistema de logging de la aplicación"""
@@ -113,45 +97,25 @@ def configure_logging(app):
 
         # Establecer nivel de log
         app.logger.setLevel(logging.INFO if not app.debug else logging.DEBUG)
-        
+
     except Exception as e:
         print(f"Error configurando logging: {e}")
+
 
 def verify_critical_config(app):
     """Verifica que la configuración crítica esté presente"""
     try:
         db_uri = app.config.get('SQLALCHEMY_DATABASE_URI')
         app.logger.info(f"SQLALCHEMY_DATABASE_URI configurada: {'Sí' if db_uri else 'No'}")
-        
+
         jwt_secret = app.config.get('JWT_SECRET_KEY')
         app.logger.info(f"JWT_SECRET_KEY configurada: {'Sí' if jwt_secret else 'No'}")
-        
+
         if not jwt_secret:
             app.logger.critical("¡JWT_SECRET_KEY NO ESTÁ CONFIGURADA! La autenticación JWT fallará.")
-            
+
         if not db_uri:
             app.logger.critical("¡SQLALCHEMY_DATABASE_URI NO ESTÁ CONFIGURADA! La base de datos no funcionará.")
-            
+
     except Exception as e:
         app.logger.error(f"Error verificando configuración: {e}", exc_info=True)
-
-def register_blueprints(app):
-    """Registra todos los blueprints de manera segura"""
-    try:
-        from .routes import bp_api
-        app.register_blueprint(bp_api, url_prefix='/api')
-        app.logger.info("Blueprint 'bp_api' registrado correctamente con prefijo '/api'")
-        
-        # Listar todas las rutas registradas para debugging
-        with app.app_context():
-            app.logger.info("=== RUTAS REGISTRADAS ===")
-            for rule in app.url_map.iter_rules():
-                methods = ','.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
-                app.logger.info(f"{rule.endpoint:30s} {methods:20s} {rule.rule}")
-            app.logger.info("========================")
-            
-    except ImportError as e:
-        app.logger.error(f"Error CRÍTICO importando 'bp_api' desde .routes: {e}", exc_info=True)
-        app.logger.error("Asegúrate que app/routes/__init__.py exista y defina 'bp_api'")
-    except Exception as e: 
-        app.logger.error(f"Error inesperado registrando 'bp_api': {e}", exc_info=True)

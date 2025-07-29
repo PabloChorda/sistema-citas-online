@@ -1,48 +1,28 @@
-# backend/app/routes/__init__.py
+# backend/app/routes/__init__.py 
+
 from flask import Blueprint
 
-# Crear el blueprint principal para la API
 bp_api = Blueprint('api', __name__)
 
-# Importaciones tardías para evitar problemas circulares
-try:
-    from .auth import bp as auth_module_bp
-    bp_api.register_blueprint(auth_module_bp, url_prefix='/auth')
-    print("✅ Blueprint 'auth' registrado correctamente")
-except ImportError as e:
-    print(f"❌ Error importando auth blueprint: {e}")
-    
-try:
-    from .services import bp as services_module_bp
-    bp_api.register_blueprint(services_module_bp, url_prefix='/services')
-    print("✅ Blueprint 'services' registrado correctamente")
-except ImportError as e:
-    print(f"⚠️ Warning: No se pudo importar services blueprint: {e}")
-    
-try:
-    from .availability import bp as availability_module_bp
-    bp_api.register_blueprint(availability_module_bp, url_prefix='/availability-rules')
-    print("✅ Blueprint 'availability' registrado correctamente")
-except ImportError as e:
-    print(f"⚠️ Warning: No se pudo importar availability blueprint: {e}")
-    
-try:
-    from .time_blocks import bp as time_blocks_module_bp
-    bp_api.register_blueprint(time_blocks_module_bp, url_prefix='/time-blocks')
-    print("✅ Blueprint 'time_blocks' registrado correctamente")
-except ImportError as e:
-    print(f"⚠️ Warning: No se pudo importar time_blocks blueprint: {e}")
-    
-try:
-    from .appointments import bp as appointments_module_bp
-    bp_api.register_blueprint(appointments_module_bp)
-    print("✅ Blueprint 'appointments' registrado correctamente")
-except ImportError as e:
-    print(f"⚠️ Warning: No se pudo importar appointments_module_bp blueprint: {e}")
+# Importamos todos los blueprints
+from .auth import bp as auth_bp 
+from .provider import provider_bp
+from .client import client_bp
+from .service import service_bp
+from .establishment import establishment_bp
+from .availability import availability_bp
+from .appointment import appointment_bp
+from .email_service import bp as email_service_bp
+from .dashboard import dashboard_bp 
 
-try:
-    from .email_service import bp as service_module_bp
-    bp_api.register_blueprint(service_module_bp)
-    print("✅ Blueprint 'appointments' registrado correctamente")
-except ImportError as e:
-    print(f"⚠️ Warning: No se pudo importar appointments blueprint: {e}")
+
+# Registramos todos los blueprints
+bp_api.register_blueprint(auth_bp, url_prefix='/auth')
+bp_api.register_blueprint(provider_bp, url_prefix='/provider')
+bp_api.register_blueprint(client_bp, url_prefix='/client')
+bp_api.register_blueprint(service_bp)
+bp_api.register_blueprint(establishment_bp)
+bp_api.register_blueprint(availability_bp)
+bp_api.register_blueprint(appointment_bp)
+bp_api.register_blueprint(email_service_bp, url_prefix='/email')
+bp_api.register_blueprint(dashboard_bp, url_prefix='/provider')
