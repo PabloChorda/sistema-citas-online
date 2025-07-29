@@ -207,11 +207,64 @@ def delete_establishment(establishment_id):
 @establishment_bp.route('/establishments/<int:establishment_id>/appointments', methods=['GET'])
 @jwt_required()
 def get_establishment_appointments(establishment_id):
-    # (Tu código existente se mantiene igual)
+    """
+    GET /api/establishments/<id>/appointments
+    -----------------------------------------
+    Obtiene las citas de un establecimiento.
+    Acepta un parámetro opcional 'date' (YYYY-MM-DD) para filtrar por día.
+    Si no se proporciona fecha, devuelve todas las citas futuras.
+    """
     provider_id = get_provider_id_from_jwt()
     if not provider_id: return jsonify({"msg": "Token inválido"}), 422
+
     establishment = Establishment.query.get(establishment_id)
     if not establishment: return jsonify({"msg": "Establecimiento no encontrado."}), 404
-    if establishment.provider_id != provider_id: return jsonify({"msg": "No tienes permiso para ver las citas de este establecimiento."}), 403
-    appointments = Appointment.query.join(Service).filter(Service.establishment_id == establishment_id).order_by(Appointment.start_time.desc()).all()
+
+    if establishment.provider_id != provider_id:
+        return jsonify({"msg": "No tienes permiso para ver las citas de este establecimiento."}), 403
+
+    # Construimos la consulta base
+    query = Appointment.query.join(Service).filter(
+        Service.establishment_id == establishment_id
+    )
+
+    # Obtenemos la fecha de los parámetros de la URL
+    date_str = request.args.get('date')
+    
+    provider_tz = None
+    if establishment.provider.timezone:
+        try:
+            from zoneinfo import ZoneInfo
+            provider_tz = ZoneInfo(establishment.provider.timezone)
+        except Exception:
+            current_app.logger.warning(f"Zona horaria inválida para proveedor {provider_id}")
+
+    if date_str:
+        # Si se proporciona una fecha, filtramos para ese día completo
+        try:
+            requested_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            
+            # Calculamos el inicio y fin de ese día en la zona horaria del proveedor y luego en UTC
+            if provider_tz:
+                start_of_day_local = datetime.combine(requested_date, time.min, tzinfo=provider_tz)
+                start_of_day_utc = start_of_day_local.astimezone(timezone.utc)
+                end_of_day_utc = start_of_day_utc + timedelta(days=1)
+            else: # Fallback a UTC si no hay timezone
+                start_of_day_utc = datetime.combine(requested_date, time.min)
+                end_of_day_utc = datetime.combine(requested_date + timedelta(days=1), time.min)
+
+            query = query.filter(
+                Appointment.start_time >= start_of_day_utc,
+                Appointment.start_time < end_of_day_utc
+            )
+        except ValueError:
+            return jsonify({"msg": "Formato de fecha inválido. Usa YYYY-MM-DD."}), 400
+    else:
+        # Si NO se proporciona fecha, devolvemos solo las citas futuras por defecto
+        now_utc = datetime.now(timezone.utc)
+        query = query.filter(Appointment.start_time >= now_utc)
+
+    # Ordenamos y ejecutamos la consulta final
+    appointments = query.order_by(Appointment.start_time.asc()).all()
+
     return jsonify([appt.to_dict() for appt in appointments]), 200
