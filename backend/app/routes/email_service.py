@@ -206,3 +206,58 @@ def send_appointment_rescheduled_email(appointment, old_start_time):
     """
     
     return send_email(subject, [client.email], html=html_body)
+
+def send_appointment_cancellation_email(appointment, cancelled_by_role):
+    """
+    Envía un correo de notificación cuando una cita ha sido cancelada.
+    """
+    if not all([appointment, appointment.user, appointment.service]):
+        current_app.logger.warning(f"Faltan datos para enviar email de cancelación para cita ID: {appointment.id if appointment else 'N/A'}")
+        return False
+
+    client = appointment.user
+    service = appointment.service
+    establishment = service.establishment
+    provider_user = establishment.provider.user
+    
+    if not provider_user:
+        current_app.logger.error(f"No se pudo encontrar el usuario proveedor para la cita {appointment.id}")
+        return False
+        
+    provider_timezone = establishment.provider.timezone or 'UTC'
+    formatted_start_time = format_datetime_for_email(appointment.start_time, provider_timezone)
+
+    recipient = None
+    subject = ''
+    html_body = ''
+
+    # El destinatario y el mensaje dependen de quién canceló la cita
+    if cancelled_by_role == 'provider':
+        # El proveedor canceló, por lo tanto, notificamos al cliente
+        recipient = client.email
+        subject = f"❌ Tu cita para {service.nombre} ha sido cancelada"
+        html_body = f"""
+            <p>Hola <strong>{client.first_name or 'tú'}</strong>,</p>
+            <p>Te informamos que tu cita en <strong>{establishment.nombre}</strong> para el <strong>{formatted_start_time}</strong> ha sido cancelada por el proveedor.</p>
+            <p>Si tienes alguna duda, por favor, contacta directamente con el establecimiento.</p>
+            <p>Puedes buscar un nuevo horario o explorar otros servicios cuando quieras.</p>
+        """
+    elif cancelled_by_role == 'client':
+        # El cliente canceló, por lo tanto, notificamos al proveedor
+        recipient = establishment.provider.email_contacto or provider_user.email
+        subject = f"⚠️ Notificación de Cancelación de Cita: {client.first_name} {client.last_name}"
+        html_body = f"""
+            <p>Hola <strong>{establishment.provider.nombre_comercial}</strong>,</p>
+            <p>Te informamos que se ha cancelado una cita en tu agenda:</p>
+            <ul>
+                <li><strong>Cliente:</strong> {client.first_name or ''} {client.last_name or ''} ({client.email})</li>
+                <li><strong>Servicio:</strong> {service.nombre}</li>
+                <li><strong>Fecha y Hora Original:</strong> {formatted_start_time}</li>
+            </ul>
+            <p>Este hueco horario ha quedado libre en tu calendario.</p>
+        """
+    else:
+        # Si el rol no es válido, no hacemos nada y salimos.
+        return False
+    
+    return send_email(subject, [recipient], html=html_body)
