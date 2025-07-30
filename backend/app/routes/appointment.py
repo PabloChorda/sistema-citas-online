@@ -199,6 +199,8 @@ def cancel_appointment(appointment_id):
     ❌ 422 Unprocessable Entity:
         - Token JWT inválido.
     """
+    from .email_service import send_appointment_cancellation_email
+
     user_id = get_user_id_from_jwt()
     if not user_id: return jsonify({"msg": "Token inválido"}), 422
 
@@ -208,8 +210,8 @@ def cancel_appointment(appointment_id):
     if not appointment: return jsonify({"msg": "Cita no encontrada."}), 404
 
     is_client_owner = (user.role == 'client' and appointment.user_id == user_id)
-    # El provider_id está en el objeto provider, no directamente en el user
-    is_provider_owner = (user.role == 'provider' and user.provider_profile and appointment.service.establishment.provider_id == user.provider_profile.provider_id)
+    is_provider_owner = (user.role == 'provider' and user.provider_profile and 
+                         appointment.service.establishment.provider_id == user.provider_profile.provider_id)
 
     if not (is_client_owner or is_provider_owner):
         return jsonify({"msg": "No tienes permiso para cancelar esta cita."}), 403
@@ -217,15 +219,24 @@ def cancel_appointment(appointment_id):
     if str(appointment.estado).startswith('CANCELLED'):
         return jsonify({"msg": "Esta cita ya ha sido cancelada."}), 400
         
-    # No permitir cancelar una cita si su hora de inicio ya ha pasado.
-    # Comparamos con la hora actual en UTC, ya que los tiempos de la BD están en UTC.
     if appointment.start_time < datetime.now(timezone.utc):
         return jsonify({"msg": "No se puede cancelar una cita que ya ha comenzado o pasado."}), 400
 
-    new_status = 'CANCELLED_BY_CLIENT' if is_client_owner else 'CANCELLED_BY_PROVIDER'
+    # Determinamos quién está cancelando la cita
+    cancelled_by_role = 'client' if is_client_owner else 'provider'
+    new_status = f'CANCELLED_BY_{cancelled_by_role.upper()}'
+    
     appointment.estado = new_status
     
     db.session.commit()
+    
+    # --- 3. ENVIAMOS EL EMAIL DE NOTIFICACIÓN ---
+    try:
+        # Pasamos la cita y el rol de quien cancela
+        send_appointment_cancellation_email(appointment, cancelled_by_role)
+    except Exception as e:
+        current_app.logger.error(f"La cita {appointment.id} se canceló, pero falló el envío de email de notificación: {e}", exc_info=True)
+
     return jsonify(appointment.to_dict()), 200
 
 @appointment_bp.route('/appointments/<int:appointment_id>/reschedule', methods=['PUT'])

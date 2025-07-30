@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import './App.css';
+import PublicLayout from './layouts/PublicLayout';
 
 // Layouts y Páginas
 import BrowsePage from './pages/BrowsePage';
@@ -59,32 +60,29 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* --- RUTAS PÚBLICAS --- */}
-        <Route path="/" element={<BrowsePage />} />
-        <Route path="/booking/:establishmentId" element={<BookingPage />} />
-        <Route path="/booking/success" element={<BookingSuccessPage />} />
+        {/* --- GRUPO 1: RUTAS PÚBLICAS CON BARRA DE NAVEGACIÓN --- */}
+        <Route element={<PublicLayout token={token} role={role} handleLogout={handleLogout} />}>
+          <Route path="/" element={<BrowsePage />} />
+          <Route path="/booking/:establishmentId" element={<BookingPage />} />
+          <Route path="/booking/success" element={<BookingSuccessPage />} />
+        </Route>
+
+        {/* --- GRUPO 2: RUTAS DE AUTENTICACIÓN (sin layout) --- */}
         <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
         <Route path="/register/provider" element={!token ? <RegisterProvider /> : <Navigate to="/dashboard" />} />
         <Route path="/reset-password/:token" element={<NewPasswordForm />} />
         <Route path="/register/reset-password" element={<ResetPassword />} />
 
-        {/* --- RUTAS PROTEGIDAS --- */}
+        {/* --- GRUPO 3: RUTAS PROTEGIDAS (con layout de dashboard) --- */}
         <Route element={<ProtectedRoute token={token} />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
           <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
-            
-            {/* --- 2. RUTA ÍNDICE AHORA ES CONDICIONAL --- */}
             <Route 
               index 
-              element={
-                role === 'provider' 
-                  ? <ProviderDashboard />    // <-- Si es proveedor, muestra el nuevo dashboard
-                  : <WelcomeDashboard />   // <-- Para otros roles (cliente), muestra la bienvenida
-              } 
+              element={role === 'provider' ? <ProviderDashboard /> : <WelcomeDashboard />} 
             />
-
-            {/* --- GRUPO DE RUTAS PARA PROVEEDOR (sin cambios) --- */}
+            
             {role === 'provider' && (
               <Route path="provider">
                 <Route path="profile" element={<ProviderProfile />} />
@@ -97,7 +95,6 @@ function App() {
               </Route>
             )}
 
-            {/* --- GRUPO DE RUTAS PARA CLIENTE (sin cambios) --- */}
             {role === 'client' && (
               <Route path="client">
                 <Route path="profile" element={<ClientProfile />} />
@@ -109,6 +106,7 @@ function App() {
           </Route>
         </Route>
         
+        {/* --- RUTA COMODÍN FINAL --- */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
