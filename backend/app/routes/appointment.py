@@ -7,7 +7,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import Appointment, Service, User
 from datetime import datetime, timedelta, timezone
-#from .email_service import send_appointment_confirmation_emails
+
 
 appointment_bp = Blueprint('appointment', __name__)
 
@@ -226,4 +226,63 @@ def cancel_appointment(appointment_id):
     appointment.estado = new_status
     
     db.session.commit()
+    return jsonify(appointment.to_dict()), 200
+
+@appointment_bp.route('/appointments/<int:appointment_id>/reschedule', methods=['PUT'])
+@jwt_required()
+def reschedule_appointment(appointment_id):
+    from .email_service import send_appointment_rescheduled_email
+    user_id = get_user_id_from_jwt()
+    if not user_id: return jsonify({"msg": "Token inválido"}), 422
+    user = User.query.get(user_id)
+    appointment = Appointment.query.get(appointment_id)
+    if not appointment: return jsonify({"msg": "Cita no encontrada."}), 404
+
+    is_provider_owner = (user.role == 'provider' and user.provider_profile and 
+                         appointment.service.establishment.provider_id == user.provider_profile.provider_id)
+
+    if not is_provider_owner:
+        return jsonify({"msg": "No tienes permiso para reprogramar esta cita."}), 403
+
+    if appointment.estado != 'CONFIRMED':
+        return jsonify({"msg": "Solo se pueden reprogramar citas confirmadas."}), 400
+
+    data = request.get_json()
+    if not data or 'new_start_time' not in data:
+        return jsonify({"msg": "Se requiere 'new_start_time'."}), 400
+
+    try:
+        new_start_time_obj = datetime.fromisoformat(data['new_start_time'].replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        return jsonify({"msg": "Formato de 'new_start_time' inválido."}), 400
+
+    service = appointment.service
+    new_end_time_obj = new_start_time_obj + timedelta(minutes=service.duracion_minutos)
+
+    overlapping = Appointment.query.join(Service).filter(
+        Appointment.id != appointment_id,
+        Service.establishment_id == service.establishment_id,
+        Appointment.start_time < new_end_time_obj,
+        Appointment.end_time > new_start_time_obj,
+        Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER'])
+    ).first()
+
+    if overlapping:
+        return jsonify({"msg": "El nuevo horario seleccionado ya no está disponible."}), 409
+
+    # --- 2. GUARDAMOS LA HORA ANTIGUA ANTES DE MODIFICAR ---
+    old_start_time = appointment.start_time
+
+    # Actualizamos la cita
+    appointment.end_time = new_end_time_obj
+    appointment.start_time = new_start_time_obj
+    
+    db.session.commit()
+    
+    # --- 3. LLAMAMOS A LA FUNCIÓN DE EMAIL DESPUÉS DEL COMMIT ---
+    try:
+        send_appointment_rescheduled_email(appointment, old_start_time)
+    except Exception as e:
+        current_app.logger.error(f"La cita {appointment.id} se reprogramó, pero falló el envío de email: {e}", exc_info=True)
+
     return jsonify(appointment.to_dict()), 200

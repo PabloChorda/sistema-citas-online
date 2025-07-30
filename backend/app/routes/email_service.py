@@ -174,3 +174,35 @@ def send_appointment_reminder_email(appointment):
     """
     
     return send_email(subject, [client.email], html=html_body)
+
+def send_appointment_rescheduled_email(appointment, old_start_time):
+    """
+    Envía un correo de notificación al cliente cuando su cita ha sido reprogramada.
+    """
+    if not all([appointment, appointment.user, appointment.service, old_start_time]):
+        current_app.logger.warning(f"Faltan datos para enviar email de reprogramación para cita ID: {appointment.id if appointment else 'N/A'}")
+        return False
+
+    client = appointment.user
+    service = appointment.service
+    establishment = service.establishment
+    provider_timezone = establishment.provider.timezone or 'UTC'
+    
+    # Formateamos ambas fechas, la nueva y la antigua, para que sean legibles
+    new_formatted_time = format_datetime_for_email(appointment.start_time, provider_timezone)
+    old_formatted_time = format_datetime_for_email(old_start_time, provider_timezone)
+
+    subject = f"🔄 Tu cita para {service.nombre} ha sido reprogramada"
+    html_body = f"""
+        <p>Hola <strong>{client.first_name or 'tú'}</strong>,</p>
+        <p>Te informamos que tu cita en <strong>{establishment.nombre}</strong> ha sido modificada por el proveedor.</p>
+        <p>Estos son los nuevos detalles:</p>
+        <ul>
+            <li><strong>Servicio:</strong> {service.nombre}</li>
+            <li><strong>Nueva Fecha y Hora:</strong> {new_formatted_time}</li>
+            <li><strong>Fecha y Hora Original:</strong> <strike>{old_formatted_time}</strike></li>
+        </ul>
+        <p>Si esta nueva fecha no te va bien, por favor, contacta con el establecimiento para encontrar una alternativa o gestiona tu cita desde tu panel de control.</p>
+    """
+    
+    return send_email(subject, [client.email], html=html_body)

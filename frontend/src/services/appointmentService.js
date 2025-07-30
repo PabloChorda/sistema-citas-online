@@ -28,3 +28,13 @@ export const getClientAppointments = () => {
 export const cancelAppointment = (appointmentId) => {
  return apiClient(`/appointments/${appointmentId}/cancel`, 'PUT');
 };
+
+/**
+ * Reprograma una cita a una nueva fecha/hora. (Protegido)
+ * @param {number|string} appointmentId
+ * @param {string} newStartTime - La nueva fecha/hora en formato ISO string (UTC)
+ * @returns {Promise<any>}
+ */
+export const rescheduleAppointment = (appointmentId, newStartTime) => {
+  return apiClient(`/appointments/${appointmentId}/reschedule`, 'PUT', { new_start_time: newStartTime });
+};

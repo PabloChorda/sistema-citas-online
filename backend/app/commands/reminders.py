@@ -3,8 +3,6 @@
 import click
 from flask.cli import with_appcontext
 from flask import current_app
-from app.models import Appointment
-from app.routes.email_service import send_appointment_reminder_email
 from datetime import datetime, timedelta, timezone
 
 @click.command('send-reminders')
@@ -14,6 +12,8 @@ def send_reminders_command():
     Busca las citas programadas para el día siguiente y envía un email de recordatorio.
     Este comando está diseñado para ser ejecutado una vez al día a través de un Cron Job.
     """
+    from app.models import Appointment
+    from app.routes.email_service import send_appointment_reminder_email
     current_app.logger.info("--- [TAREA PROGRAMADA] Iniciando envío de recordatorios de citas ---")
     
     # Calcular el rango de fechas para "mañana" en UTC

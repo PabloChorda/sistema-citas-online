@@ -1,6 +1,7 @@
 // frontend/src/components/availability/DayAvailability.jsx
 
 import React from 'react';
+// --- LÍNEA DE IMPORTACIÓN AÑADIDA ---
 import { PlusIcon, TrashIcon, PencilIcon } from '@heroicons/react/24/solid';
 
 // Componente para una única franja horaria
@@ -10,10 +11,10 @@ const TimeSlot = ({ rule, onEdit, onDelete }) => (
       {rule.hora_inicio.slice(0, 5)} - {rule.hora_fin.slice(0, 5)}
     </span>
     <div className="flex space-x-2">
-      <button onClick={() => onEdit(rule)} className="text-gray-500 hover:text-gray-800">
+      <button onClick={() => onEdit(rule)} className="text-gray-500 hover:text-gray-800" title="Editar horario">
         <PencilIcon className="h-4 w-4" />
       </button>
-      <button onClick={() => onDelete(rule.id)} className="text-red-500 hover:text-red-700">
+      <button onClick={() => onDelete(rule.id)} className="text-red-500 hover:text-red-700" title="Eliminar horario">
         <TrashIcon className="h-4 w-4" />
       </button>
     </div>
