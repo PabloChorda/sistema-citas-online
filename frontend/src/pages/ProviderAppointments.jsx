@@ -1,11 +1,11 @@
 // frontend/src/pages/ProviderAppointments.jsx
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
-// --- 1. IMPORTAMOS LA FUNCIÓN DE CANCELAR ---
+import { useSearchParams, Link } from 'react-router-dom'; // Mantenemos Link para el fallback
 import { getAppointmentsForEstablishment } from '../services/establishmentService';
 import { cancelAppointment } from '../services/appointmentService';
 import Card from '../components/ui/Card';
+import Button from '../components/ui/Button'; // <-- Importamos nuestro componente Button
 
 const toYYYYMMDD = (date) => {
   if (!date) return '';
@@ -15,9 +15,8 @@ const toYYYYMMDD = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-// --- 2. ACTUALIZAMOS EL COMPONENTE DE LA FILA ---
 const AppointmentRow = ({ appointment, onCancel }) => {
-  const isCancelable = appointment.estado === 'CONFIRMED' || appointment.estado === 'PENDING_PROVIDER';
+  const isActionable = appointment.estado === 'CONFIRMED' || appointment.estado === 'PENDING_PROVIDER';
 
   return (
     <tr className="border-b border-gray-200">
@@ -25,15 +24,25 @@ const AppointmentRow = ({ appointment, onCancel }) => {
       <td className="py-3 px-4">{appointment.service?.nombre || 'N/A'}</td>
       <td className="py-3 px-4">{appointment.user?.first_name || 'Cliente'} {appointment.user?.last_name || ''}</td>
       <td className="py-3 px-4">{appointment.estado}</td>
-      <td className="py-3 px-4 text-center">
-        {/* Mostramos el botón de cancelar solo si la cita está en un estado válido */}
-        {isCancelable ? (
-          <button 
-            onClick={() => onCancel(appointment.id)}
-            className="text-red-600 hover:underline text-sm font-medium"
-          >
-            Cancelar
-          </button>
+      <td className="py-3 px-4 text-center space-x-4">
+        {isActionable ? (
+          <>
+            {/* Usamos el Botón como un enlace de navegación */}
+            <Button
+              variant="link"
+              to={`/booking/${appointment.service.establishment.id}?reschedule_appointment_id=${appointment.id}&service_id=${appointment.service.id}`}
+            >
+              Reprogramar
+            </Button>
+            {/* Usamos el Botón para una acción onClick */}
+            <Button
+              variant="link"
+              onClick={() => onCancel(appointment.id)}
+              className="text-red-600 hover:text-red-800" // Sobrescribimos el color para que sea rojo
+            >
+              Cancelar
+            </Button>
+          </>
         ) : (
           <span className="text-gray-400 text-sm">-</span>
         )}
@@ -53,7 +62,6 @@ const ProviderAppointments = () => {
   const [error, setError] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Usamos useCallback para que la función no se recree innecesariamente
   const fetchAppointments = useCallback(async () => {
     if (!establishmentId) return;
     try {
@@ -72,13 +80,10 @@ const ProviderAppointments = () => {
     fetchAppointments();
   }, [fetchAppointments]);
 
-  // --- 3. CREAMOS LA FUNCIÓN HANDLER PARA CANCELAR ---
   const handleCancelAppointment = async (appointmentId) => {
     if (window.confirm('¿Estás seguro de que quieres cancelar esta cita? Se notificará al cliente.')) {
       try {
-        // Llamamos a la función del servicio que ya teníamos
         await cancelAppointment(appointmentId);
-        // Refrescamos la lista para ver el estado actualizado
         await fetchAppointments();
       } catch (err) {
         alert(`Error al cancelar la cita: ${err.message}`);
@@ -120,7 +125,6 @@ const ProviderAppointments = () => {
               </thead>
               <tbody>
                 {appointments.map(appt => (
-                  // --- 4. PASAMOS LA FUNCIÓN AL COMPONENTE HIJO ---
                   <AppointmentRow key={appt.id} appointment={appt} onCancel={handleCancelAppointment} />
                 ))}
               </tbody>
