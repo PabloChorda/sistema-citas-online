@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-import './App.css';
 import PublicLayout from './layouts/PublicLayout';
 
 // Layouts y Páginas

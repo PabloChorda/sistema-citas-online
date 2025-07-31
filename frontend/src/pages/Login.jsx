@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { loginUser, loginWithGoogle } from '../services/authService';
 import GoogleLoginComponent from "./GoogleLoginComponent";
-import '../styles/Login.css';
+
 
 // --- IMPORTAMOS LOS NUEVOS COMPONENTES DE UI ---
 import Button from '../components/ui/Button';

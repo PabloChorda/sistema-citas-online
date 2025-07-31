@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { registerUser } from '../services/authService'; // Asegúrate de que esta función exista en authService.js
-import '../styles/Login.css'; // Reutilizamos los estilos de Login
+
 
 function Register() {
     const [formData, setFormData] = useState({
