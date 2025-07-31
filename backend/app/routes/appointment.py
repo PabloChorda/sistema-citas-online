@@ -240,24 +240,43 @@ def cancel_appointment(appointment_id):
     return jsonify(appointment.to_dict()), 200
 
 @appointment_bp.route('/appointments/<int:appointment_id>/reschedule', methods=['PUT'])
+@appointment_bp.route('/appointments/<int:appointment_id>/reschedule', methods=['PUT'])
 @jwt_required()
 def reschedule_appointment(appointment_id):
-    from .email_service import send_appointment_rescheduled_email
+    """
+    PUT /api/appointments/<id>/reschedule
+    Reprograma una cita a una nueva fecha/hora.
+    Ahora permite que tanto el proveedor como el cliente (dueño) la usen.
+    """
     user_id = get_user_id_from_jwt()
     if not user_id: return jsonify({"msg": "Token inválido"}), 422
+
     user = User.query.get(user_id)
     appointment = Appointment.query.get(appointment_id)
-    if not appointment: return jsonify({"msg": "Cita no encontrada."}), 404
 
+    if not appointment:
+        return jsonify({"msg": "Cita no encontrada."}), 404
+
+    # --- 1. LÓGICA DE PERMISOS ACTUALIZADA ---
+    is_client_owner = (user.role == 'client' and appointment.user_id == user_id)
     is_provider_owner = (user.role == 'provider' and user.provider_profile and 
                          appointment.service.establishment.provider_id == user.provider_profile.provider_id)
 
-    if not is_provider_owner:
+    if not (is_client_owner or is_provider_owner):
         return jsonify({"msg": "No tienes permiso para reprogramar esta cita."}), 403
 
+    # --- Validación del estado de la cita (sin cambios) ---
     if appointment.estado != 'CONFIRMED':
         return jsonify({"msg": "Solo se pueden reprogramar citas confirmadas."}), 400
 
+    # --- 2. NUEVA VALIDACIÓN: LÍMITE DE ANTELACIÓN DE 24 HORAS ---
+    # Solo los clientes tienen esta restricción. Los proveedores pueden mover citas cuando quieran.
+    if is_client_owner:
+        time_until_appointment = appointment.start_time - datetime.now(timezone.utc)
+        if time_until_appointment < timedelta(hours=24):
+            return jsonify({"msg": "No se puede reprogramar una cita con menos de 24 horas de antelación."}), 403
+
+    # --- El resto de la lógica se mantiene igual ---
     data = request.get_json()
     if not data or 'new_start_time' not in data:
         return jsonify({"msg": "Se requiere 'new_start_time'."}), 400
@@ -281,10 +300,7 @@ def reschedule_appointment(appointment_id):
     if overlapping:
         return jsonify({"msg": "El nuevo horario seleccionado ya no está disponible."}), 409
 
-    # --- 2. GUARDAMOS LA HORA ANTIGUA ANTES DE MODIFICAR ---
     old_start_time = appointment.start_time
-
-    # Actualizamos la cita
     appointment.end_time = new_end_time_obj
     appointment.start_time = new_start_time_obj
     

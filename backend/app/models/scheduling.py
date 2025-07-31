@@ -113,13 +113,13 @@ class Appointment(BaseModel):
     user = db.relationship('User', back_populates='appointments')
     service = db.relationship('Service', back_populates='appointments')
 
-    @validates('start_time', 'end_time')
-    def validate_datetime_range(self, key, value):
-        if key == 'start_time' and hasattr(self, 'end_time') and self.end_time and value >= self.end_time:
-            raise ValueError("La fecha/hora de inicio debe ser anterior a la de finalización.")
-        elif key == 'end_time' and hasattr(self, 'start_time') and self.start_time and value <= self.start_time:
-            raise ValueError("La fecha/hora de finalización debe ser posterior a la de inicio.")
-        return value
+#    @validates('start_time', 'end_time')
+#    def validate_datetime_range(self, key, value):
+#        if key == 'start_time' and hasattr(self, 'end_time') and self.end_time and value >= self.end_time:
+#            raise ValueError("La fecha/hora de inicio debe ser anterior a la de finalización.")
+#        elif key == 'end_time' and hasattr(self, 'start_time') and self.start_time and value <= self.start_time:
+#            raise ValueError("La fecha/hora de finalización debe ser posterior a la de inicio.")
+#        return value
 
     @validates('precio_final')
     def validate_precio(self, key, precio):
