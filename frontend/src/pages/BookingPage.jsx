@@ -99,7 +99,7 @@ const BookingPage = () => {
   };
 
   const handleSlotClick = async (slot) => {
-    // Si estamos en modo reprogramación, llamamos a la API de reprogramar
+    // Si estamos en modo reprogramación...
     if (isRescheduleMode) {
       if (window.confirm(`¿Confirmas que quieres mover la cita a esta nueva hora: ${slot}?`)) {
         try {
@@ -109,7 +109,20 @@ const BookingPage = () => {
           await rescheduleAppointment(appointmentToRescheduleId, newStartTimeISO);
           
           alert("¡Cita reprogramada con éxito!");
-          navigate(`/dashboard/provider/appointments?est_id=${establishmentId}&name=${encodeURIComponent(establishment.nombre)}`);
+
+          // --- LÓGICA DE REDIRECCIÓN CORREGIDA ---
+          // 1. Leemos el rol del usuario actual desde localStorage
+          const currentUserRole = localStorage.getItem('userRole');
+
+          // 2. Decidimos a dónde redirigir basándonos en el rol
+          if (currentUserRole === 'provider') {
+            // Si es un proveedor, lo mandamos a su agenda
+            navigate(`/dashboard/provider/appointments?est_id=${establishmentId}&name=${encodeURIComponent(establishment.nombre)}`);
+          } else {
+            // Si es un cliente (o cualquier otra cosa), lo mandamos a su página "Mis Citas"
+            navigate('/dashboard/client/appointments');
+          }
+
         } catch (err) {
           alert(`Error al reprogramar: ${err.message}`);
         }
