@@ -512,3 +512,12 @@ body, html {
   padding: 1rem 1.5rem;
   font-size: 1.1rem;
 }
+
+/* --- CORRECCIÓN DE CLIC PARA FULLCALENDAR --- */
+/* Le damos a los eventos del calendario una posición relativa y un z-index
+   para asegurarnos de que estén "por encima" de otros elementos y puedan ser clickeados. */
+   .fc-event {
+    position: relative;
+    z-index: 10;
+    cursor: pointer; /* Cambia el cursor para que parezca clicable */
+  }
