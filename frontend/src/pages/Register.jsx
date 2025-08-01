@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { registerUser } from '../services/authService'; // Asegúrate de que esta función exista en authService.js
-import '../styles/Login.css'; // Reutilizamos los estilos de Login
+import toast from 'react-hot-toast';
+import { registerUser } from '../services/authService';
+import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
 
 function Register() {
     const [formData, setFormData] = useState({
@@ -13,9 +15,8 @@ function Register() {
         password: '',
         phone_number: ''
     });
-    const [message, setMessage] = useState('');
-    const [error, setError] = useState('');
     const navigate = useNavigate();
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const handleChange = (e) => {
         setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -23,37 +24,37 @@ function Register() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        setError('');
-        setMessage('');
-
-        // Validación simple de contraseña
+        
         if (formData.password.length < 6) {
-            setError("La contraseña debe tener al menos 6 caracteres.");
+            toast.error("La contraseña debe tener al menos 6 caracteres.");
             return;
         }
 
+        setIsSubmitting(true);
         try {
             const data = await registerUser(formData);
-            setMessage(data.msg || "¡Registro exitoso! Por favor, inicia sesión.");
-            // Pequeña pausa para que el usuario pueda leer el mensaje antes de redirigir
+            toast.success(data.msg || "¡Registro exitoso! Revisa tu email para validar la cuenta.");
+            
             setTimeout(() => {
                 navigate('/login');
-            }, 2000);
+            }, 2500); // Damos un poco de tiempo para leer el toast
         } catch (err) {
-            setError(err.message || "Ocurrió un error durante el registro.");
+            toast.error(err.message || "Ocurrió un error durante el registro.");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
     return (
-        <div className="login-container"> {/* Usamos la clase contenedora principal de Login */}
-            <main className="login-box"> {/* Usamos la clase para la caja central */}
-                <header className="login-header"> {/* Encabezado morado */}
+        <div className="login-container">
+            <main className="login-box">
+                <header className="login-header">
                     <h1>Crear Cuenta de Cliente</h1>
                     <p>Únete para empezar a reservar tus citas</p>
                 </header>
                 
                 <form onSubmit={handleSubmit}>
-                    <input
+                    <Input
                         type="text"
                         name="first_name"
                         placeholder="Nombre"
@@ -61,7 +62,7 @@ function Register() {
                         onChange={handleChange}
                         required
                     />
-                    <input
+                    <Input
                         type="text"
                         name="last_name"
                         placeholder="Apellidos"
@@ -69,7 +70,7 @@ function Register() {
                         onChange={handleChange}
                         required
                     />
-                    <input
+                    <Input
                         type="email"
                         name="email"
                         placeholder="Email"
@@ -77,7 +78,7 @@ function Register() {
                         onChange={handleChange}
                         required
                     />
-                    <input
+                    <Input
                         type="password"
                         name="password"
                         placeholder="Contraseña"
@@ -85,7 +86,7 @@ function Register() {
                         onChange={handleChange}
                         required
                     />
-                    <input
+                    <Input
                         type="tel"
                         name="phone_number"
                         placeholder="Teléfono (Opcional)"
@@ -93,11 +94,10 @@ function Register() {
                         onChange={handleChange}
                     />
                     
-                    <button type="submit">Registrarse</button>
+                    <Button type="submit" variant="primary" disabled={isSubmitting}>
+                        {isSubmitting ? 'Registrando...' : 'Registrarse'}
+                    </Button>
                 </form>
-
-                {message && <p className="login-message" style={{ color: '#28a745' }}>{message}</p>}
-                {error && <p className="login-message" style={{ color: '#dc3545' }}>{error}</p>}
 
                 <footer className="login-footer">
                     <p>¿Ya tienes una cuenta? <Link to="/login">Inicia sesión</Link></p>

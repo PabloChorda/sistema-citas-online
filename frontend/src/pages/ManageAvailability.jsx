@@ -1,7 +1,9 @@
 // frontend/src/pages/ManageAvailability.jsx
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { useLocation } from 'react-router-dom';
+import Card from '../components/ui/Card';
 
 // Servicios de API
 import { getAvailability, createAvailabilityRule, deleteAvailabilityRule, updateAvailabilityRule } from '../services/availabilityService';
@@ -76,30 +78,47 @@ const ManageAvailability = () => {
   };
 
   const handleSaveRule = async (formData) => {
+    // Definimos la promesa de guardado. Será una actualización o una creación.
+    const savePromise = ruleToEdit
+      ? updateAvailabilityRule(ruleToEdit.id, formData)
+      : createAvailabilityRule(establishmentId, formData);
+
     try {
-      if (ruleToEdit) {
-        // Lógica de Actualización
-        await updateAvailabilityRule(ruleToEdit.id, formData);
-      } else {
-        // Lógica de Creación
-        await createAvailabilityRule(establishmentId, formData);
-      }
+      // Usamos toast.promise para manejar los estados de la promesa automáticamente
+      await toast.promise(
+        savePromise,
+        {
+          loading: 'Guardando horario...',
+          success: '¡Horario guardado con éxito!',
+          error: (err) => err.message || 'No se pudo guardar el horario.', // Muestra el error específico de la API
+        }
+      );
+
       handleCloseModal();
       await fetchAvailability(); // Recargamos para ver los cambios
+
     } catch (err) {
-      alert('Error al guardar el horario: ' + err.message);
-      console.error(err);
+      // toast.promise ya muestra el error, pero dejamos el console.error para depuración
+      console.error('Fallo en handleSaveRule:', err);
     }
   };
-
+  
   const handleDeleteRule = async (ruleId) => {
+    // window.confirm sigue siendo una buena opción para acciones destructivas
     if (window.confirm('¿Estás seguro de que quieres eliminar este horario?')) {
       try {
         await deleteAvailabilityRule(ruleId);
+        
+        // Mostramos un toast de éxito
+        toast.success('Horario eliminado correctamente.');
+        
         await fetchAvailability(); // Recargamos para ver los cambios
+
       } catch (err) {
-        alert('Error al eliminar la regla: ' + err.message);
-        console.error(err);
+        // Mostramos un toast de error
+        toast.error(err.message || 'No se pudo eliminar el horario.');
+        
+        console.error('Error al eliminar la regla:', err);
       }
     }
   };
@@ -113,25 +132,28 @@ const ManageAvailability = () => {
     <div className="page-wrapper">
       <header className="page-header">
         <h1>Gestionar Disponibilidad</h1>
-        <p>Define tus horarios de trabajo para el establecimiento (ID: {establishmentId}).</p>
+        <p>Define tus horarios de trabajo recurrentes. Estos se usarán para generar los huecos de cita.</p>
       </header>
 
       {loading && <p className="p-4">Cargando horarios...</p>}
       {error && <p className="error-message p-4">{error}</p>}
       
       {!loading && !error && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {DAYS_OF_WEEK.map(day => (
-            <DayAvailability
-              key={day}
-              dayName={day.charAt(0).toUpperCase() + day.slice(1).toLowerCase()}
-              rules={rulesByDay[day] || []}
-              onAdd={() => handleOpenModal(day)}
-              onEdit={(rule) => handleOpenModal(day, rule)}
-              onDelete={handleDeleteRule}
-            />
-          ))}
-        </div>
+        // Usamos una Card para envolver la lista de días
+        <Card>
+          <div className="divide-y divide-gray-200">
+            {DAYS_OF_WEEK.map(day => (
+              <DayAvailability
+                key={day}
+                dayName={day.charAt(0).toUpperCase() + day.slice(1).toLowerCase()}
+                rules={rulesByDay[day] || []}
+                onAdd={() => handleOpenModal(day)}
+                onEdit={(rule) => handleOpenModal(day, rule)}
+                onDelete={handleDeleteRule}
+              />
+            ))}
+          </div>
+        </Card>
       )}
 
       <AvailabilityModal

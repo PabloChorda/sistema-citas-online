@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
-import './App.css';
 import PublicLayout from './layouts/PublicLayout';
+import { Toaster } from 'react-hot-toast';
 
 // Layouts y Páginas
 import BrowsePage from './pages/BrowsePage';
@@ -59,6 +59,12 @@ function App() {
 
   return (
     <Router>
+      <Toaster 
+        position="top-right" // Posición en la pantalla
+        toastOptions={{
+          duration: 5000, // Duración por defecto en milisegundos
+        }}
+      />
       <Routes>
         {/* --- GRUPO 1: RUTAS PÚBLICAS CON BARRA DE NAVEGACIÓN --- */}
         <Route element={<PublicLayout token={token} role={role} handleLogout={handleLogout} />}>

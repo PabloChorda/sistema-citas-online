@@ -2,48 +2,45 @@
 
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { loginUser, loginWithGoogle } from '../services/authService';
 import GoogleLoginComponent from "./GoogleLoginComponent";
-import '../styles/Login.css';
-
-// --- IMPORTAMOS LOS NUEVOS COMPONENTES DE UI ---
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input'; 
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
-  
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage('');
     try {
         const data = await loginUser(email, password);
         onLogin(data.access_token, data.role);
         
+        toast.success('¡Bienvenido/a de nuevo!');
+
         const from = location.state?.from?.pathname || '/dashboard';
         navigate(from, { replace: true });
-
     } catch (error) {
-        setMessage(error.message || "Error al iniciar sesión");
+        toast.error(error.message || "Error al iniciar sesión. Revisa tus credenciales.");
     }
   };
 
   const handleGoogleLogin = async (googleToken) => {
-    setMessage('');
     try {
       const data = await loginWithGoogle(googleToken);
       onLogin(data.access_token, data.role);
-      
+
+      toast.success('¡Bienvenido/a de nuevo!');
+
       const from = location.state?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
 
     } catch (error) {
-      setMessage(error.message || "Error en el inicio de sesión con Google");
+      toast.error(error.message || "Error en el inicio de sesión con Google.");
     }
   };
 
@@ -65,9 +62,7 @@ function Login({ onLogin }) {
           <hr style={{ flexGrow: 1, borderTop: '1px solid #e5e7eb' }} />
         </div>
 
-        {/* --- FORMULARIO REFACTORIZADO --- */}
         <form onSubmit={handleSubmit}>
-          {/* Reemplazamos <input> con nuestro componente <Input> */}
           <Input 
             type="email" 
             placeholder="Email" 
@@ -82,13 +77,10 @@ function Login({ onLogin }) {
             onChange={(e) => setPassword(e.target.value)} 
             required 
           />
-          {/* Reemplazamos <button> con nuestro componente <Button> */}
           <Button type="submit" variant="primary">
             Entrar
           </Button>
         </form>
-
-        {message && <p className="login-message" style={{ color: 'red' }}>{message}</p>}
         
         <footer className="login-footer">
           <p>¿No tienes cuenta? <Link to="/register">Regístrate</Link></p>

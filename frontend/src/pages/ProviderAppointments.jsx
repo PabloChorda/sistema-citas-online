@@ -1,141 +1,141 @@
 // frontend/src/pages/ProviderAppointments.jsx
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom'; // Mantenemos Link para el fallback
+import React, { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getAppointmentsForEstablishment } from '../services/establishmentService';
 import { cancelAppointment } from '../services/appointmentService';
 import Card from '../components/ui/Card';
-import Button from '../components/ui/Button'; // <-- Importamos nuestro componente Button
-
-const toYYYYMMDD = (date) => {
-  if (!date) return '';
-  const year = date.getFullYear();
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const AppointmentRow = ({ appointment, onCancel }) => {
-  const isActionable = appointment.estado === 'CONFIRMED' || appointment.estado === 'PENDING_PROVIDER';
-
-  return (
-    <tr className="border-b border-gray-200">
-      <td className="py-3 px-4">{new Date(appointment.start_time).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</td>
-      <td className="py-3 px-4">{appointment.service?.nombre || 'N/A'}</td>
-      <td className="py-3 px-4">{appointment.user?.first_name || 'Cliente'} {appointment.user?.last_name || ''}</td>
-      <td className="py-3 px-4">{appointment.estado}</td>
-      <td className="py-3 px-4 text-center space-x-4">
-        {isActionable ? (
-          <>
-            {/* Usamos el Botón como un enlace de navegación */}
-            <Button
-              variant="link"
-              to={`/booking/${appointment.service.establishment.id}?reschedule_appointment_id=${appointment.id}&service_id=${appointment.service.id}`}
-            >
-              Reprogramar
-            </Button>
-            {/* Usamos el Botón para una acción onClick */}
-            <Button
-              variant="link"
-              onClick={() => onCancel(appointment.id)}
-              className="text-red-600 hover:text-red-800" // Sobrescribimos el color para que sea rojo
-            >
-              Cancelar
-            </Button>
-          </>
-        ) : (
-          <span className="text-gray-400 text-sm">-</span>
-        )}
-      </td>
-    </tr>
-  );
-};
-
+import AppointmentDetailModal from '../components/provider/AppointmentDetailModal';
 
 const ProviderAppointments = () => {
-  const [searchParams] = useSearchParams();
-  const establishmentId = searchParams.get('est_id');
-  const establishmentName = searchParams.get('name');
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+    const establishmentId = searchParams.get('est_id');
+    const establishmentName = searchParams.get('name');
+    
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedEvent, setSelectedEvent] = useState(null);
+    
+    const calendarEl = useRef(null);
+    const calendarInstanceRef = useRef(null);
 
-  const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+    // Los handlers de las acciones del modal
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setSelectedEvent(null);
+    };
 
-  const fetchAppointments = useCallback(async () => {
-    if (!establishmentId) return;
-    try {
-      setLoading(true);
-      const dateStr = toYYYYMMDD(selectedDate);
-      const data = await getAppointmentsForEstablishment(establishmentId, dateStr);
-      setAppointments(data.sort((a, b) => new Date(a.start_time) - new Date(b.start_time)));
-    } catch (err) {
-      setError('No se pudieron cargar las citas.');
-    } finally {
-      setLoading(false);
-    }
-  }, [establishmentId, selectedDate]);
+    const handleCancel = async (appointmentId) => {
+        if (window.confirm('¿Estás seguro de que quieres cancelar esta cita?')) {
+          try {
+            await cancelAppointment(appointmentId);
+            // --- 2. REEMPLAZAMOS EL alert() POR UN TOAST DE ÉXITO ---
+            toast.success('Cita cancelada correctamente.');
+            
+            // Refrescamos la lista
+            if (calendarInstanceRef.current) {
+                calendarInstanceRef.current.refetchEvents();
+              }
+          } catch (error) {
+            // --- 3. REEMPLAZAMOS EL alert() POR UN TOAST DE ERROR ---
+            toast.error(`Error al cancelar: ${error.message}`);
+            console.error(error);
+          }
+        }
+      };
 
-  useEffect(() => {
-    fetchAppointments();
-  }, [fetchAppointments]);
+    const handleReschedule = (appointment) => {
+        handleCloseModal();
+        const service = appointment.service;
+        if (service && service.establishment) {
+            navigate(
+              `/booking/${service.establishment.id}?reschedule_appointment_id=${appointment.id}&service_id=${service.id}`
+            );
+        } else {
+            alert("Error: Faltan datos para reprogramar.");
+        }
+    };
+    
+    // El useEffect que monta y destruye el calendario
+    useEffect(() => {
+        if (!calendarEl.current || !establishmentId || !window.FullCalendar) return;
 
-  const handleCancelAppointment = async (appointmentId) => {
-    if (window.confirm('¿Estás seguro de que quieres cancelar esta cita? Se notificará al cliente.')) {
-      try {
-        await cancelAppointment(appointmentId);
-        await fetchAppointments();
-      } catch (err) {
-        alert(`Error al cancelar la cita: ${err.message}`);
-        console.error(err);
-      }
-    }
-  };
+        const calendar = new window.FullCalendar.Calendar(calendarEl.current, {
+            initialView: 'timeGridWeek',
+            locale: 'es',
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay'
+            },
+            height: 'auto',
+            allDaySlot: false,
+            eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false },
+            views: {
+                timeGridWeek: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' },
+                timeGridDay: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' }
+            },
+            
+            events: async (fetchInfo, successCallback, failureCallback) => {
+                try {
+                    const startDate = fetchInfo.start.toISOString().split('T')[0];
+                    const endDate = fetchInfo.end.toISOString().split('T')[0];
+                    const appointments = await getAppointmentsForEstablishment(establishmentId, startDate, endDate);
+                    const events = appointments.map(appt => ({
+                        id: appt.id,
+                        title: `${appt.service.nombre} - ${appt.user.first_name || ''}`,
+                        start: appt.start_time,
+                        end: appt.end_time,
+                        backgroundColor: appt.estado === 'CONFIRMED' ? '#10B981' : '#EF4444',
+                        borderColor: appt.estado === 'CONFIRMED' ? '#059669' : '#DC2626',
+                        extendedProps: { fullAppointment: appt }
+                    }));
+                    successCallback(events);
+                } catch (error) {
+                    failureCallback(error);
+                }
+            },
+            
+            eventClick: (clickInfo) => {
+                setSelectedEvent(clickInfo.event);
+                setIsModalOpen(true);
+            }
+        });
 
-  const handleDateChange = (e) => {
-    const dateValue = e.target.value;
-    const dateObject = new Date(dateValue + 'T00:00:00');
-    setSelectedDate(dateObject);
-  };
+        calendarInstanceRef.current = calendar;
+        calendar.render();
 
-  return (
-    <div className="page-wrapper">
-      <header className="page-header">
-        <h1>Agenda de Citas</h1>
-        {establishmentName && <p>Mostrando citas para: <strong>{establishmentName}</strong></p>}
-      </header>
-      <div className="mb-6">
-        <label htmlFor="agenda-date" className="block text-sm font-medium text-gray-700 mb-1">Seleccionar fecha</label>
-        <input type="date" id="agenda-date" value={toYYYYMMDD(selectedDate)} onChange={handleDateChange} className="p-2 border border-gray-300 rounded-md shadow-sm" />
-      </div>
-      <Card>
-        {loading && <p className="p-4 text-center">Cargando agenda...</p>}
-        {error && <div className="p-4 text-center"><p className="error-message">{error}</p></div>}
-        {!loading && !error && (
-          appointments.length > 0 ? (
-            <table className="min-w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="py-2 px-4 text-left">Hora</th>
-                  <th className="py-2 px-4 text-left">Servicio</th>
-                  <th className="py-2 px-4 text-left">Cliente</th>
-                  <th className="py-2 px-4 text-left">Estado</th>
-                  <th className="py-2 px-4 text-center">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {appointments.map(appt => (
-                  <AppointmentRow key={appt.id} appointment={appt} onCancel={handleCancelAppointment} />
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="p-4 text-center text-gray-500">No hay citas programadas para el día seleccionado.</p>
-          )
-        )}
-      </Card>
-    </div>
-  );
+        return () => {
+            if (calendarInstanceRef.current) {
+                calendarInstanceRef.current.destroy();
+                calendarInstanceRef.current = null;
+            }
+        };
+    }, [establishmentId]);
+
+    return (
+        <>
+            <div className="page-wrapper">
+                <header className="page-header">
+                    <h1>Agenda de Citas</h1>
+                    {establishmentName && <p>Mostrando agenda para: <strong>{establishmentName}</strong></p>}
+                </header>
+                
+                <Card>
+                    <div ref={calendarEl}></div>
+                </Card>
+            </div>
+
+            <AppointmentDetailModal
+                isOpen={isModalOpen}
+                onClose={handleCloseModal}
+                event={selectedEvent}
+                onCancel={handleCancel}
+                onReschedule={handleReschedule}
+            />
+        </>
+    );
 };
 
 export default ProviderAppointments;
