@@ -1,52 +1,62 @@
+// frontend/src/pages/ResetPassword.jsx
+
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { requestPasswordReset } from '../services/authService';
-
+import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
 
 function ResetPassword() {
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setIsSubmitting(true);
     try {
       await requestPasswordReset(email);
-      setMessage('📧 Si el correo existe, se ha enviado un enlace para restablecer tu contraseña.');
+      // Por seguridad, siempre mostramos un mensaje de éxito,
+      // incluso si el email no existe. Esto evita que alguien pueda
+      // adivinar qué correos están registrados en el sistema.
+      toast.success('Si el correo existe, se ha enviado un enlace para restablecer tu contraseña.');
     } catch (error) {
-      setMessage('❌ Ha ocurrido un error. Intenta de nuevo.');
+      // Aunque mostramos éxito al usuario, podemos loguear el error real
+      console.error("Error en requestPasswordReset:", error);
+      toast.error('Ha ocurrido un error. Por favor, intenta de nuevo más tarde.');
+    } finally {
+      setIsSubmitting(false);
+      // Limpiamos el campo de email después del intento
+      setEmail('');
     }
   };
 
   return (
-    <div className="page-wrapper">
-      <header className="login-header">
-        <h2>📅 CitaFácil</h2>
-      </header>
+    // Reutilizamos el layout del login para mantener la consistencia
+    <div className="login-container">
+      <main className="login-box">
+        <header className="login-header">
+          <h1>Restablecer Contraseña</h1>
+          <p>Introduce tu email para recibir el enlace de recuperación</p>
+        </header>
 
-      <main className="login-container">
-        <h1>Restablecer contraseña</h1>
-        <form onSubmit={handleSubmit}>
-          <label>Email:
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </label>
-          <button type="submit">Enviar enlace de recuperación</button>
+        <form onSubmit={handleSubmit} className="mt-8">
+          <Input
+            type="email"
+            placeholder="Introduce tu email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <Button type="submit" variant="primary" disabled={isSubmitting}>
+            {isSubmitting ? 'Enviando...' : 'Enviar Enlace'}
+          </Button>
         </form>
-        {message && <p className="login-message">{message}</p>}
 
-        <p className="register-link">
-          ¿Recuerdas tu contraseña? <Link to="/login">Inicia sesión</Link>
-        </p>
+        <footer className="login-footer">
+          <p>¿Recuerdas tu contraseña? <Link to="/login">Inicia sesión</Link></p>
+        </footer>
       </main>
-
-      <footer className="login-footer">
-        <p>¿Necesitas ayuda? <a href="mailto:soporte@citafacil.com">Contáctanos</a></p>
-        <p>&copy; {new Date().getFullYear()} CitaFácil. Todos los derechos reservados.</p>
-      </footer>
     </div>
   );
 }

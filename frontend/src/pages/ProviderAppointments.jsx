@@ -1,6 +1,7 @@
 // frontend/src/pages/ProviderAppointments.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getAppointmentsForEstablishment } from '../services/establishmentService';
 import { cancelAppointment } from '../services/appointmentService';
@@ -27,17 +28,22 @@ const ProviderAppointments = () => {
 
     const handleCancel = async (appointmentId) => {
         if (window.confirm('¿Estás seguro de que quieres cancelar esta cita?')) {
-            try {
-                await cancelAppointment(appointmentId);
-                handleCloseModal();
-                if (calendarInstanceRef.current) {
-                    calendarInstanceRef.current.refetchEvents();
-                }
-            } catch (error) {
-                alert(`Error al cancelar la cita: ${error.message}`);
-            }
+          try {
+            await cancelAppointment(appointmentId);
+            // --- 2. REEMPLAZAMOS EL alert() POR UN TOAST DE ÉXITO ---
+            toast.success('Cita cancelada correctamente.');
+            
+            // Refrescamos la lista
+            if (calendarInstanceRef.current) {
+                calendarInstanceRef.current.refetchEvents();
+              }
+          } catch (error) {
+            // --- 3. REEMPLAZAMOS EL alert() POR UN TOAST DE ERROR ---
+            toast.error(`Error al cancelar: ${error.message}`);
+            console.error(error);
+          }
         }
-    };
+      };
 
     const handleReschedule = (appointment) => {
         handleCloseModal();

@@ -521,3 +521,10 @@ body, html {
     z-index: 10;
     cursor: pointer; /* Cambia el cursor para que parezca clicable */
   }
+
+  /* --- FORZAR TAMAÑO DEL ICONO DE ÉXITO --- */
+/* Seleccionamos específicamente el SVG dentro de la página de éxito */
+.success-icon-wrapper svg {
+  width: 48px !important;  /* 48px equivale a h-12/w-12 de Tailwind */
+  height: 48px !important;
+}

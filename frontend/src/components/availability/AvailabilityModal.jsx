@@ -1,6 +1,7 @@
 // frontend/src/components/availability/AvailabilityModal.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import ReactDOM from 'react-dom';
 import { generateTimeSlots } from '../../utils/time';
 import Button from '../ui/Button'; // Importamos el componente Button para consistencia
@@ -40,7 +41,7 @@ const AvailabilityModal = ({ isOpen, onClose, onSave, ruleToEdit, day }) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (formData.hora_fin <= formData.hora_inicio) {
-        alert("La hora de fin debe ser posterior a la hora de inicio.");
+        toast.error("La hora de fin debe ser posterior a la hora de inicio.");
         return;
     }
     const finalData = { ...formData };
@@ -49,6 +50,7 @@ const AvailabilityModal = ({ isOpen, onClose, onSave, ruleToEdit, day }) => {
     }
     onSave(finalData);
   };
+  
 
   if (!isOpen) {
     return null;
