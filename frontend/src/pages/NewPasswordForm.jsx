@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { resetPasswordWithToken } from '../services/authService';
-import '../styles/Login.css';
+
 
 function NewPasswordForm() {
   const { token } = useParams();

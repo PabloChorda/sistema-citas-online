@@ -17,4 +17,5 @@ COPY . .
 EXPOSE 5173
 
 # Comando por defecto
+# Usamos 'npm run dev', que sabe dónde encontrar el ejecutable de 'vite'
 CMD ["npm", "run", "dev", "--", "--host"]

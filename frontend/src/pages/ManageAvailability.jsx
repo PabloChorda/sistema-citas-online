@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
+import Card from '../components/ui/Card';
 
 // Servicios de API
 import { getAvailability, createAvailabilityRule, deleteAvailabilityRule, updateAvailabilityRule } from '../services/availabilityService';
@@ -113,25 +114,28 @@ const ManageAvailability = () => {
     <div className="page-wrapper">
       <header className="page-header">
         <h1>Gestionar Disponibilidad</h1>
-        <p>Define tus horarios de trabajo para el establecimiento (ID: {establishmentId}).</p>
+        <p>Define tus horarios de trabajo recurrentes. Estos se usarán para generar los huecos de cita.</p>
       </header>
 
       {loading && <p className="p-4">Cargando horarios...</p>}
       {error && <p className="error-message p-4">{error}</p>}
       
       {!loading && !error && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {DAYS_OF_WEEK.map(day => (
-            <DayAvailability
-              key={day}
-              dayName={day.charAt(0).toUpperCase() + day.slice(1).toLowerCase()}
-              rules={rulesByDay[day] || []}
-              onAdd={() => handleOpenModal(day)}
-              onEdit={(rule) => handleOpenModal(day, rule)}
-              onDelete={handleDeleteRule}
-            />
-          ))}
-        </div>
+        // Usamos una Card para envolver la lista de días
+        <Card>
+          <div className="divide-y divide-gray-200">
+            {DAYS_OF_WEEK.map(day => (
+              <DayAvailability
+                key={day}
+                dayName={day.charAt(0).toUpperCase() + day.slice(1).toLowerCase()}
+                rules={rulesByDay[day] || []}
+                onAdd={() => handleOpenModal(day)}
+                onEdit={(rule) => handleOpenModal(day, rule)}
+                onDelete={handleDeleteRule}
+              />
+            ))}
+          </div>
+        </Card>
       )}
 
       <AvailabilityModal

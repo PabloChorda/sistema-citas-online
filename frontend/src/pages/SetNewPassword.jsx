@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { resetPasswordWithToken } from '../services/authService';
-import '../styles/Login.css';
 
 function SetNewPassword() {
   const { token } = useParams();
