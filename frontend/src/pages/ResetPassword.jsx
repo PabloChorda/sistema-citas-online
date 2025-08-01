@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { requestPasswordReset } from '../services/authService';
-import '../styles/Login.css';
+
 
 function ResetPassword() {
   const [email, setEmail] = useState('');

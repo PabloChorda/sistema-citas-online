@@ -72,22 +72,17 @@ export const getAllPublicEstablishments = () => {
   return apiClient('/public/establishments', 'GET');
 };
 /**
-* Obtiene todas las citas para un establecimiento específico. (Protegido para Proveedor)
- * Acepta una fecha opcional para filtrar.
+ * Obtiene todas las citas para un establecimiento en un rango de fechas.
  * @param {string|number} establishmentId
- * @param {string} [date] - Fecha opcional en formato 'YYYY-MM-DD'
+ * @param {string} startDate - Fecha de inicio en formato 'YYYY-MM-DD'
+ * @param {string} endDate - Fecha de fin en formato 'YYYY-MM-DD'
  * @returns {Promise<any>}
  */
-export const getAppointmentsForEstablishment = (establishmentId, date = null) => {
-  if (!establishmentId) {
-    return Promise.reject(new Error("El ID del establecimiento es requerido."));
+export const getAppointmentsForEstablishment = (establishmentId, startDate, endDate) => {
+  if (!establishmentId || !startDate || !endDate) {
+    return Promise.reject(new Error("Faltan parámetros para obtener la agenda."));
   }
   
-  let endpoint = `/establishments/${establishmentId}/appointments`;
-
-  // Si se proporciona una fecha, la añadimos como parámetro de consulta
-  if (date) {
-    endpoint += `?date=${date}`;
-  }
+  const endpoint = `/establishments/${establishmentId}/appointments?start=${startDate}&end=${endDate}`;
   return apiClient(endpoint, 'GET');
 };
