@@ -53,13 +53,22 @@ export const getPublicEstablishmentDetails = (establishmentId) => {
  * @param {number|string} establishmentId
  * @param {number|string} serviceId
  * @param {string} date - Fecha en formato 'YYYY-MM-DD'
+ * @param {number|string|null} [staffId=null] - ID opcional del miembro del staff.
  * @returns {Promise<string[]>}
  */
-export const getAvailableSlots = (establishmentId, serviceId, date) => {
+export const getAvailableSlots = (establishmentId, serviceId, date, staffId = null) => {
   if (!establishmentId || !serviceId || !date) {
     return Promise.reject(new Error('Faltan parámetros para obtener los horarios.'));
   }
-  const endpoint = `/establishments/${establishmentId}/available-slots?service_id=${serviceId}&date=${date}`;
+  
+  // Construimos la URL base
+  let endpoint = `/establishments/${establishmentId}/available-slots?service_id=${serviceId}&date=${date}`;
+
+  // Si se proporciona un staffId (y no es 'any' o null), lo añadimos a la URL
+  if (staffId && staffId !== 'any') {
+    endpoint += `&staff_id=${staffId}`;
+  }
+  
   return apiClient(endpoint, 'GET');
 };
 
@@ -68,11 +77,11 @@ export const getAvailableSlots = (establishmentId, serviceId, date) => {
  * @returns {Promise<any>} Una lista de objetos de establecimiento.
  */
 export const getAllPublicEstablishments = () => {
-  // Apunta a la nueva ruta pública que acabamos de crear en el backend.
   return apiClient('/public/establishments', 'GET');
 };
+
 /**
- * Obtiene todas las citas para un establecimiento en un rango de fechas.
+ * Obtiene todas las citas para un establecimiento en un rango de fechas. (Protegido)
  * @param {string|number} establishmentId
  * @param {string} startDate - Fecha de inicio en formato 'YYYY-MM-DD'
  * @param {string} endDate - Fecha de fin en formato 'YYYY-MM-DD'

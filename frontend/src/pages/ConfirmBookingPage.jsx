@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import Button from '../components/ui/Button';
+import Card from '../components/ui/Card'; // Usamos Card para consistencia
 import { useBooking } from '../context/BookingContext';
 import { createAppointment } from '../services/appointmentService';
 
@@ -22,19 +23,18 @@ const ConfirmBookingPage = () => {
     }
   }, [bookingDetails, navigate]);
 
+  // Si no hay detalles, mostramos un loader mientras redirigimos
   if (!bookingDetails) {
-    return (
-      <div className="page-wrapper">
-        <p>Cargando detalles de la reserva...</p>
-      </div>
-    );
+    return <div className="page-wrapper"><p>Cargando...</p></div>;
   }
   
-  const { establishment, service, date, slot } = bookingDetails;
+  // Extraemos los datos del contexto
+  const { establishment, service, date, slot, staffId, availableStaff } = bookingDetails;
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-
+    
+    // Construimos el objeto Date completo y lo convertimos a ISO
     const datePart = new Date(date).toISOString().split('T')[0];
     const startTimeISO = new Date(`${datePart}T${slot}:00`).toISOString();
 
@@ -42,20 +42,17 @@ const ConfirmBookingPage = () => {
       service_id: service.id,
       start_time: startTimeISO,
       notes_client: notes,
+      staff_id: staffId, // <-- La nueva propiedad
     });
 
     try {
-      // --- 1. CAPTURAMOS LA RESPUESTA DE LA API ---
-      const newAppointment = await createAppointment({
-        service_id: service.id,
-        start_time: startTimeISO,
-        notes_client: notes,
+      const newAppointment = await toast.promise(appointmentPromise, {
+        loading: 'Confirmando tu cita...',
+        success: '¡Tu cita ha sido confirmada!',
+        error: (err) => err.message || 'No se pudo completar la reserva.'
       });
       
-      toast.success('¡Tu cita ha sido confirmada!');
       clearBookingInfo();
-  
-      // --- 2. PASAMOS LA CITA CREADA A LA PÁGINA DE ÉXITO ---
       navigate('/booking/success', { state: { appointment: newAppointment } });
 
     } catch (err) {
@@ -68,6 +65,9 @@ const ConfirmBookingPage = () => {
   const formattedDate = new Date(date).toLocaleDateString('es-ES', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
+  
+  // Buscamos el nombre del profesional seleccionado, si lo hay
+  const selectedStaffMember = staffId ? availableStaff?.find(s => s.id === staffId) : null;
 
   return (
     <div className="page-wrapper">
@@ -76,10 +76,14 @@ const ConfirmBookingPage = () => {
         <p>Revisa los detalles y confirma tu reserva.</p>
       </header>
 
-      <div className="profile-card max-w-2xl mx-auto">
+      <Card className="max-w-2xl mx-auto">
         <div className="space-y-4">
           <p><strong>Establecimiento:</strong> {establishment.nombre}</p>
           <p><strong>Servicio:</strong> {service.nombre}</p>
+          {/* Mostramos el profesional si fue seleccionado */}
+          {selectedStaffMember && (
+            <p><strong>Con:</strong> {selectedStaffMember.first_name} {selectedStaffMember.last_name}</p>
+          )}
           <p><strong>Fecha:</strong> {formattedDate}</p>
           <p><strong>Hora:</strong> {slot}</p>
           <p><strong>Precio:</strong> {service.precio}€</p>
@@ -100,13 +104,12 @@ const ConfirmBookingPage = () => {
           ></textarea>
         </div>
 
-        
         <div className="flex justify-end mt-6">
           <Button onClick={handleSubmit} disabled={isSubmitting} variant="primary">
             {isSubmitting ? 'Confirmando...' : 'Confirmar Cita'}
           </Button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

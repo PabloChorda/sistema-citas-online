@@ -5,7 +5,49 @@ from .base import BaseModel
 from .enums import day_of_week_enum, appointment_status_enum
 from sqlalchemy.orm import validates
 from sqlalchemy import Time, DateTime, Numeric, Text, event
-from datetime import time, datetime # <-- Importamos datetime
+from datetime import time, datetime 
+
+# --- NUEVO MODELO PARA LA DISPONIBILIDAD DEL STAFF ---
+class StaffAvailabilityRule(BaseModel):
+    __tablename__ = 'staff_availability_rules'
+
+    id = db.Column(db.Integer, primary_key=True)
+    # Vinculado a un miembro del staff en lugar de a un establecimiento
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff.id', ondelete='CASCADE'), nullable=False, index=True)
+    
+    dia_semana = db.Column(day_of_week_enum, nullable=False, index=True)
+    hora_inicio = db.Column(Time(timezone=False), nullable=False)
+    hora_fin = db.Column(Time(timezone=False), nullable=False)
+    
+    # Relación inversa para poder acceder desde un objeto Staff
+    staff_member = db.relationship('Staff', backref=db.backref('availability_rules', lazy='dynamic', cascade="all, delete-orphan"))
+
+    # Reutilizamos el mismo validador que en AvailabilityRule
+    @validates('hora_inicio', 'hora_fin')
+    def validate_and_convert_time(self, key, value):
+        if isinstance(value, str):
+            try: return datetime.strptime(value, '%H:%M').time()
+            except ValueError:
+                try: return datetime.strptime(value, '%H:%M:%S').time()
+                except ValueError: raise ValueError(f"El formato para '{key}' es inválido.")
+        return value
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'staff_id': self.staff_id,
+            'dia_semana': self.dia_semana,
+            'hora_inicio': self.hora_inicio.strftime('%H:%M:%S'),
+            'hora_fin': self.hora_fin.strftime('%H:%M:%S'),
+            **self.to_dict_base()
+        }
+
+# Listener para el nuevo modelo
+@event.listens_for(StaffAvailabilityRule, 'before_insert')
+@event.listens_for(StaffAvailabilityRule, 'before_update')
+def receive_before_staff_rule_change(mapper, connection, target):
+    if target.hora_inicio and target.hora_fin and target.hora_inicio >= target.hora_fin:
+        raise ValueError("La hora de inicio debe ser anterior a la hora de finalización.")
 
 class AvailabilityRule(BaseModel):
     __tablename__ = 'availability_rules'
@@ -100,6 +142,7 @@ class Appointment(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='SET NULL'), nullable=False, index=True)
     service_id = db.Column(db.Integer, db.ForeignKey('services.id', ondelete='SET NULL'), nullable=False, index=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey('staff.id'), nullable=True, index=True)
     start_time = db.Column(DateTime(timezone=True), nullable=False, index=True)
     end_time = db.Column(DateTime(timezone=True), nullable=False)
     estado = db.Column(appointment_status_enum, nullable=False, default='CONFIRMED', index=True)
@@ -112,6 +155,7 @@ class Appointment(BaseModel):
     # Relaciones
     user = db.relationship('User', back_populates='appointments')
     service = db.relationship('Service', back_populates='appointments')
+    staff_member = db.relationship('Staff', backref='appointments', lazy='joined')
 
 #    @validates('start_time', 'end_time')
 #    def validate_datetime_range(self, key, value):
@@ -137,6 +181,8 @@ class Appointment(BaseModel):
         return {
             'id': self.id,
             'user_id': self.user_id,
+            'service_id': self.service_id,
+            'staff_id': self.staff_id,
             'start_time': self.start_time.isoformat(),
             'end_time': self.end_time.isoformat(),
             'estado': self.estado,
@@ -146,11 +192,11 @@ class Appointment(BaseModel):
             'origen_reserva': self.origen_reserva,
             'precio_final': str(self.precio_final) if self.precio_final is not None else None,
             
-            # Incluimos el objeto de servicio completo, que ya contiene el establecimiento.
+            # Incluimos los objetos anidados, que ya tienen sus propios to_dict()
             'service': self.service.to_dict() if self.service else None,
-            
-            # --- AÑADIMOS LA INFORMACIÓN DEL CLIENTE ---
             'user': self.user.to_dict() if self.user else None,
+            'staff_member': self.staff_member.to_dict() if self.staff_member else None,
 
+            # Incluimos created_at y updated_at desde el BaseModel
             **self.to_dict_base()
         }

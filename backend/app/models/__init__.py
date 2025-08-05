@@ -10,8 +10,8 @@ from .base import BaseModel
 from .enums import day_of_week_enum, appointment_status_enum
 from .user import User, Provider
 from .establishment import Establishment, Staff
-from .service import Service
-from .scheduling import AvailabilityRule, TimeBlock, Appointment
+from .service import Service, staff_services
+from .scheduling import AvailabilityRule, TimeBlock, Appointment,StaffAvailabilityRule
 from .tag import Tag, EstablishmentTag
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     'Provider',
     'Establishment',
     'Staff',
+    'staff_services',
     'Service',
     'AvailabilityRule',
     'TimeBlock',

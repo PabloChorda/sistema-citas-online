@@ -528,3 +528,28 @@ body, html {
   width: 48px !important;  /* 48px equivale a h-12/w-12 de Tailwind */
   height: 48px !important;
 }
+
+/* 
+  Esta regla asegura que el fondo oscuro del modal ocupe toda la pantalla
+  y tenga un z-index muy alto para estar por encima de todo.
+*/
+.staff-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9998; /* Un valor muy alto */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 
+  Esta regla se aplica al contenedor blanco del modal.
+  El 'z-index' aquí asegura que el contenido del modal esté por encima
+  de su propio fondo oscuro.
+*/
+.staff-modal-overlay > div {
+  z-index: 9999;
+}

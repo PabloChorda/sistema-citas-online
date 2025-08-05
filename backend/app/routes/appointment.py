@@ -87,6 +87,8 @@ def create_appointment():
     try:
         service_id = int(data['service_id'])
         start_time_obj = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+        # --- 1. OBTENEMOS EL staff_id (OPCIONAL) DEL JSON ---
+        staff_id = data.get('staff_id') 
     except (ValueError, TypeError):
         return jsonify({"msg": "Formato de service_id o start_time inválido."}), 400
     
@@ -96,32 +98,47 @@ def create_appointment():
         
     end_time_obj = start_time_obj + timedelta(minutes=service.duracion_minutos)
 
-    # --- VALIDACIÓN DE SEGURIDAD FINAL ANTI-COLISIÓN ---
-    overlapping = Appointment.query.join(Service).filter(
+    # --- 2. VALIDACIÓN DE SOLAPAMIENTO MEJORADA (CONSCIENTE DEL STAFF) ---
+    query = Appointment.query.join(Service).filter(
         Service.establishment_id == service.establishment_id,
         Appointment.start_time < end_time_obj,
         Appointment.end_time > start_time_obj,
         Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER'])
-    ).first()
+    )
+
+    if service.establishment.has_multiple_staff and staff_id:
+        # Si se eligió un empleado, solo nos importa si ESE empleado está ocupado.
+        query = query.filter(Appointment.staff_id == staff_id)
+    
+    # Si no se eligió un empleado (o el local no tiene staff), la consulta original
+    # que comprueba todo el establecimiento sigue siendo una buena validación de seguridad.
+    # Una mejora futura sería comprobar si hay *algún* empleado libre.
+
+    overlapping = query.first()
 
     if overlapping:
-        return jsonify({"msg": "Este horario acaba de ser reservado. Por favor, elige otro."}), 409
+        return jsonify({"msg": "Este horario con este profesional acaba de ser reservado. Por favor, elige otro."}), 409
 
+    # --- 3. GUARDAMOS EL staff_id EN LA NUEVA CITA ---
     new_appointment = Appointment(
-        user_id=user_id, service_id=service_id, start_time=start_time_obj,
-        end_time=end_time_obj, estado='CONFIRMED', precio_final=service.precio,
-        notas_cliente=data.get('notes_client')
+        user_id=user_id,
+        service_id=service_id,
+        start_time=start_time_obj,
+        end_time=end_time_obj,
+        estado='CONFIRMED',
+        precio_final=service.precio,
+        notas_cliente=data.get('notes_client'),
+        staff_id=staff_id # <-- La nueva propiedad
     )
     db.session.add(new_appointment)
     db.session.commit()
+    
     try:
         send_appointment_confirmation_emails(new_appointment)
     except Exception as e:
-        # Si el envío de email falla, no rompemos la petición. Solo lo registramos.
         current_app.logger.error(f"La cita {new_appointment.id} se creó, pero falló el envío de emails: {e}", exc_info=True)
 
-    # Devolvemos la respuesta al frontend como siempre.
-    return jsonify(new_appointment.to_dict()), 201    
+    return jsonify(new_appointment.to_dict()), 201
 
 @appointment_bp.route('/appointments/client', methods=['GET'])
 @jwt_required()

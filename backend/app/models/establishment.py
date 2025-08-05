@@ -14,6 +14,8 @@ class Establishment(BaseModel):
     id = db.Column(db.Integer, primary_key=True)
     provider_id = db.Column(db.Integer, db.ForeignKey('providers.provider_id', ondelete='CASCADE'), nullable=False, index=True)
     nombre = db.Column(db.String(255), nullable=False)
+    # Flag para activar la lógica de múltiples miembros de staff.
+    has_multiple_staff = db.Column(db.Boolean, default=False, nullable=False)
     direccion_completa = db.Column(db.String(255), nullable=False)
     codigo_postal = db.Column(db.String(10), nullable=True)
     provincia = db.Column(db.String(100), nullable=False, index=True)
@@ -71,6 +73,7 @@ class Establishment(BaseModel):
             'provincia': self.provincia,
             'localidad': self.localidad,
             'activo': self.activo,
+            'has_multiple_staff': self.has_multiple_staff,
             'provider_info': provider_info,
             **self.to_dict_base()
         }
@@ -79,39 +82,45 @@ class Staff(BaseModel):
     __tablename__ = 'staff'
 
     id = db.Column(db.Integer, primary_key=True)
+    
+    # Un miembro del Staff ahora ES un Usuario en el sistema.
+    user_id = db.Column(db.Integer, db.ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    
     establishment_id = db.Column(db.Integer, db.ForeignKey('establishments.id', ondelete='CASCADE'), nullable=False, index=True)
-    nombre = db.Column(db.String(255), nullable=False)
-    rol = db.Column(db.String(100), nullable=False)
-    email_contacto = db.Column(db.String(100), nullable=True)
-    telefono_contacto = db.Column(db.String(50), nullable=True)
-    imagen_perfil = db.Column(db.String(255), nullable=True)
+    
+    rol = db.Column(db.String(100), nullable=False) # Ej: "Estilista", "Terapeuta"
     bio = db.Column(db.Text, nullable=True)
+    imagen_perfil = db.Column(db.String(255), nullable=True)
     activo = db.Column(db.Boolean, nullable=False, default=True)
-    visible_web = db.Column(db.Boolean, nullable=False, default=True)
-
-    # Relación
+    
+    # Relaciones
     establishment = db.relationship('Establishment', back_populates='staff_members')
-
-    @validates('email_contacto')
-    def validate_email(self, key, email):
-        if email and '@' not in email:
-            raise ValueError("El correo electrónico del personal no es válido.")
-        return email
+    user = db.relationship('User', backref=db.backref('staff_profile', uselist=False, lazy='joined'))
+    services = db.relationship('Service', secondary='staff_services', back_populates='staff_members')
 
     def __repr__(self):
-        return f'<Staff ID {self.id} - {self.nombre} ({self.rol})>'
+        user_name = f"{self.user.first_name}" if self.user and self.user.first_name else f"User ID {self.user_id}"
+        return f'<Staff ID {self.id}: {user_name} ({self.rol})>'
 
     def to_dict(self):
+        user_info = self.user.to_dict() if self.user else {}
+        
+        try:
+            service_ids_list = [service.id for service in self.services]
+        except Exception:
+            service_ids_list = []
+
         return {
             'id': self.id,
+            'user_id': self.user_id,
             'establishment_id': self.establishment_id,
-            'nombre': self.nombre,
+            'first_name': user_info.get('first_name'),
+            'last_name': user_info.get('last_name'),
+            'email': user_info.get('email'),
             'rol': self.rol,
-            'email_contacto': self.email_contacto,
-            'telefono_contacto': self.telefono_contacto,
-            'imagen_perfil': self.imagen_perfil,
             'bio': self.bio,
+            'imagen_perfil': user_info.get('avatar_url') or self.imagen_perfil,
             'activo': self.activo,
-            'visible_web': self.visible_web,
+            'service_ids': service_ids_list,
             **self.to_dict_base()
         }
