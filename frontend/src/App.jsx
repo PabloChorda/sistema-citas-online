@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } f
 import PublicLayout from './layouts/PublicLayout';
 import { Toaster } from 'react-hot-toast';
 
+
 // Layouts y Páginas
 import BrowsePage from './pages/BrowsePage';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
@@ -27,6 +28,10 @@ import ClientAppointments from './pages/ClientAppointments';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import ProviderAppointments from './pages/ProviderAppointments';
 import ProviderDashboard from './pages/ProviderDashboard';
+import ManageStaff from './pages/ManageStaff';
+import ManageStaffAvailability from './pages/ManageStaffAvailability';
+
+
 
 
 function App() {
@@ -98,6 +103,8 @@ function App() {
                 <Route path="services" element={<ManageServices />} />
                 <Route path="availability" element={<ManageAvailability />} />
                 <Route path="appointments" element={<ProviderAppointments />} />
+                <Route path="staff" element={<ManageStaff />} />
+                <Route path="staff/availability" element={<ManageStaffAvailability />} />
               </Route>
             )}
 

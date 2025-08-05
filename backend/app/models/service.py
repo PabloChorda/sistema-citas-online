@@ -8,6 +8,13 @@ from .base import BaseModel
 from sqlalchemy import UniqueConstraint, Numeric
 from sqlalchemy.orm import validates
 
+# Define la relación muchos-a-muchos entre Staff y Service.
+staff_services = db.Table('staff_services',
+    db.Column('staff_id', db.Integer, db.ForeignKey('staff.id', ondelete="CASCADE"), primary_key=True),
+    db.Column('service_id', db.Integer, db.ForeignKey('services.id', ondelete="CASCADE"), primary_key=True)
+)
+
+
 class Service(BaseModel):
     __tablename__ = 'services'
     __table_args__ = (
@@ -29,8 +36,9 @@ class Service(BaseModel):
     # Relaciones
     establishment = db.relationship('Establishment', back_populates='services')
     appointments = db.relationship('Appointment', back_populates='service', lazy='dynamic', cascade="save-update, merge")
+    staff_members = db.relationship('Staff', secondary=staff_services, back_populates='services')
 
-    # ... (Todos los @validates y __repr__ se quedan igual) ...
+
     @validates('duracion_minutos')
     def validate_duracion(self, key, duracion):
         if not isinstance(duracion, int) or duracion <= 0:
@@ -71,6 +79,7 @@ class Service(BaseModel):
             
             # Incluimos la información del establecimiento.
             'establishment': self.establishment.to_dict() if self.establishment else None,
+            'staff_ids': [staff.id for staff in self.staff_members],
 
             **self.to_dict_base()
         }

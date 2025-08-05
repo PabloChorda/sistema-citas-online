@@ -18,6 +18,7 @@ const EstablishmentCard = ({ establishment, onDelete }) => (
     <div className="mt-auto pt-4 border-t border-gray-200">
       <div className="flex justify-between items-center mb-4">
         {/* Estos enlaces con texto sí se benefician del componente Button */}
+        <Button variant="link" to={`/dashboard/provider/staff?est_id=${establishment.id}&name=${encodeURIComponent(establishment.nombre)}`}>Personal</Button>
         <Button variant="link" to={`/dashboard/provider/services?est_id=${establishment.id}`}>Servicios</Button>
         <Button variant="link" to={`/dashboard/provider/availability?est_id=${establishment.id}`}>Horario</Button>
         <Button variant="link" to={`/dashboard/provider/appointments?est_id=${establishment.id}&name=${encodeURIComponent(establishment.nombre)}`}>Agenda</Button>

@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from app.models import Establishment, Provider, Service, AvailabilityRule, Appointment
+from app.models import Establishment, Provider, Service, AvailabilityRule, Appointment,  Staff, StaffAvailabilityRule
 from datetime import datetime, date, timedelta, time, timezone
 
 establishment_bp = Blueprint('establishment', __name__)
@@ -35,21 +35,35 @@ def list_public_establishments():
 
 @establishment_bp.route('/public/establishments/<int:establishment_id>', methods=['GET'])
 def get_public_establishment_details(establishment_id):
-    # (Tu código existente se mantiene igual)
+    """
+    Obtiene los detalles públicos de un establecimiento para la página de reserva.
+    """
     establishment = Establishment.query.filter_by(id=establishment_id, activo=True).first()
-    if not establishment: return jsonify({"msg": "Establecimiento no encontrado o inactivo."}), 404
+    
+    if not establishment:
+        return jsonify({"msg": "Establecimiento no encontrado o inactivo."}), 404
+
+    # --- LÓGICA CORREGIDA ---
+    # 1. Obtenemos el diccionario completo del establecimiento usando el método del modelo
+    establishment_data = establishment.to_dict()
+    
+    # 2. Obtenemos los servicios activos y los añadimos al diccionario
     services = Service.query.filter_by(establishment_id=establishment.id, is_active=True).all()
-    return jsonify({
-        "id": establishment.id, "nombre": establishment.nombre,
-        "direccion_completa": establishment.direccion_completa,
-        "services": [service.to_dict() for service in services]
-    }), 200
+    establishment_data['services'] = [service.to_dict() for service in services]
+    
+    # 3. Devolvemos el diccionario combinado
+    return jsonify(establishment_data), 200
 
 @establishment_bp.route('/establishments/<int:establishment_id>/available-slots', methods=['GET'])
 def get_available_slots(establishment_id):
-    """ Calcula y devuelve los huecos de tiempo disponibles (ruta pública). """
+    """
+    Calcula los huecos disponibles. Ahora es consciente del modo 'staff'.
+    Acepta un parámetro opcional 'staff_id' para filtrar por un empleado específico.
+    """
+    # --- 1. OBTENCIÓN DE PARÁMETROS (sin cambios) ---
     date_str = request.args.get('date')
     service_id_str = request.args.get('service_id')
+    staff_id_str = request.args.get('staff_id') # <-- Nuevo parámetro opcional
 
     if not date_str or not service_id_str:
         return jsonify({"msg": "Los parámetros 'date' y 'service_id' son requeridos."}), 400
@@ -57,17 +71,16 @@ def get_available_slots(establishment_id):
     try:
         requested_dt_naive = datetime.strptime(date_str, '%Y-%m-%d')
         service_id = int(service_id_str)
+        staff_id = int(staff_id_str) if staff_id_str else None
     except (ValueError, TypeError):
-        return jsonify({"msg": "Formato de fecha o service_id inválido."}), 400
+        return jsonify({"msg": "Formato de fecha o IDs inválido."}), 400
 
+    # --- 2. OBTENCIÓN DE ENTIDADES (sin cambios) ---
     establishment = Establishment.query.get(establishment_id)
     if not establishment or not establishment.activo: return jsonify({"msg": "Establecimiento no encontrado o inactivo."}), 404
-    
     service = Service.query.get(service_id)
     if not service or not service.is_active: return jsonify({"msg": "Servicio no encontrado o inactivo."}), 404
-    
-    if service.establishment_id != establishment_id:
-        return jsonify({"msg": "Este servicio no pertenece a este establecimiento."}), 400
+    if service.establishment_id != establishment_id: return jsonify({"msg": "Este servicio no pertenece a este establecimiento."}), 400
 
     provider = establishment.provider
     if not provider.timezone: return jsonify({"msg": "La zona horaria del proveedor no está configurada."}), 500
@@ -78,50 +91,97 @@ def get_available_slots(establishment_id):
     except Exception:
         return jsonify({"msg": "Error de configuración de zona horaria en el servidor."}), 500
 
+    # --- 3. LÓGICA DE CÁLCULO DE HORARIOS (REFACTORIZADA) ---
+    service_duration = timedelta(minutes=service.duracion_minutos)
     start_of_day_local = datetime.combine(requested_dt_naive.date(), time.min, tzinfo=provider_tz)
     day_map = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
     day_of_week = day_map.get(start_of_day_local.weekday())
-    
+
     if not day_of_week: return jsonify([]), 200
 
-    availability_rules = AvailabilityRule.query.filter_by(establishment_id=establishment_id, dia_semana=day_of_week, activo=True).all()
-    if not availability_rules: return jsonify([]), 200
+    # --- BIFURCACIÓN DE LÓGICA: ¿MODO STAFF O MODO SIMPLE? ---
+    
+    if establishment.has_multiple_staff:
+        # --- MODO STAFF: Disponibilidad basada en empleados ---
+        
+        # 3a. Encontrar los profesionales que pueden hacer el servicio
+        query_staff = Staff.query.join(Staff.services).filter(Staff.establishment_id == establishment_id, Staff.activo == True, Service.id == service_id)
+        if staff_id:
+            # Si el cliente ha elegido un empleado específico
+            query_staff = query_staff.filter(Staff.id == staff_id)
+        
+        available_staff = query_staff.all()
+        if not available_staff: return jsonify([]), 200 # Nadie puede hacer este servicio
 
+        # 3b. Obtener TODAS las franjas de trabajo de los empleados disponibles
+        working_intervals = []
+        for member in available_staff:
+            rules = StaffAvailabilityRule.query.filter_by(staff_id=member.id, dia_semana=day_of_week).all()
+            for rule in rules:
+                working_intervals.append({
+                    "staff_id": member.id,
+                    "start": datetime.combine(start_of_day_local.date(), rule.hora_inicio, tzinfo=provider_tz),
+                    "end": datetime.combine(start_of_day_local.date(), rule.hora_fin, tzinfo=provider_tz)
+                })
+        
+    else:
+        # --- MODO SIMPLE: Disponibilidad basada en el horario del local (lógica antigua) ---
+        rules = AvailabilityRule.query.filter_by(establishment_id=establishment_id, dia_semana=day_of_week, activo=True).all()
+        if not rules: return jsonify([]), 200
+        
+        # Creamos una estructura similar a la del modo staff para unificar la lógica
+        working_intervals = [{
+            "staff_id": None, # No hay staff específico
+            "start": datetime.combine(start_of_day_local.date(), rule.hora_inicio, tzinfo=provider_tz),
+            "end": datetime.combine(start_of_day_local.date(), rule.hora_fin, tzinfo=provider_tz)
+        } for rule in rules]
+
+    # --- 4. LÓGICA UNIFICADA DE GENERACIÓN Y FILTRADO DE HUECOS ---
+    
     start_of_day_utc = start_of_day_local.astimezone(timezone.utc)
     end_of_day_utc = start_of_day_utc + timedelta(days=1)
     
+    # Obtenemos TODAS las citas del día para el establecimiento
     existing_appointments = Appointment.query.join(Service).filter(
         Service.establishment_id == establishment_id,
         Appointment.start_time >= start_of_day_utc,
         Appointment.start_time < end_of_day_utc,
         Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER'])
     ).all()
-    
-    booked_slots = [{'start': appt.start_time, 'end': appt.end_time} for appt in existing_appointments]
 
-    final_slots = []
-    service_duration = timedelta(minutes=service.duracion_minutos)
-    slot_increment = timedelta(minutes=15)
+    # Agrupamos las citas por empleado
+    booked_slots_by_staff = {}
+    for appt in existing_appointments:
+        key = appt.staff_id or 'establishment' # 'establishment' para citas sin staff asignado
+        if key not in booked_slots_by_staff:
+            booked_slots_by_staff[key] = []
+        booked_slots_by_staff[key].append({'start': appt.start_time, 'end': appt.end_time})
+
+    # Generamos los huecos
+    final_slots = set()
     now_utc = datetime.now(timezone.utc)
+    slot_increment = timedelta(minutes=15) 
 
-    for rule in availability_rules:
-        start_dt_local_rule = datetime.combine(start_of_day_local.date(), rule.hora_inicio, tzinfo=provider_tz)
-        end_dt_local_rule = datetime.combine(start_of_day_local.date(), rule.hora_fin, tzinfo=provider_tz)
-        
-        current_slot_start = start_dt_local_rule.astimezone(timezone.utc)
-        working_end = end_dt_local_rule.astimezone(timezone.utc)
+    for interval in working_intervals:
+        current_staff_id = interval['staff_id']
+        booked_slots = booked_slots_by_staff.get(current_staff_id, []) if current_staff_id else booked_slots_by_staff.get('establishment', [])
+
+        current_slot_start = interval['start'].astimezone(timezone.utc)
+        working_end = interval['end'].astimezone(timezone.utc)
 
         while current_slot_start + service_duration <= working_end:
             if current_slot_start >= now_utc:
                 slot_end = current_slot_start + service_duration
                 is_booked = any((current_slot_start < booked['end'] and slot_end > booked['start']) for booked in booked_slots)
+                
                 if not is_booked:
                     slot_in_provider_tz = current_slot_start.astimezone(provider_tz)
-                    final_slots.append(slot_in_provider_tz.strftime('%H:%M'))
+                    final_slots.add(slot_in_provider_tz.strftime('%H:%M'))
             
             current_slot_start += slot_increment
             
-    return jsonify(sorted(list(set(final_slots)))), 200
+    return jsonify(sorted(list(final_slots))), 200
+
 
 # --- RUTAS PRIVADAS (requieren autenticación) ---
 
