@@ -60,82 +60,98 @@ const ProviderAppointments = () => {
     // El useEffect que monta y destruye el calendario
     useEffect(() => {
         if (!calendarEl.current || !establishmentId || !window.FullCalendar) return;
-
+    
         const calendar = new window.FullCalendar.Calendar(calendarEl.current, {
-            initialView: 'timeGridWeek',
-            locale: 'es',
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            },
-            height: 'auto',
-            allDaySlot: false,
-            eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false },
-            views: {
-                timeGridWeek: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' },
-                timeGridDay: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' }
-            },
-            
-            events: async (fetchInfo, successCallback, failureCallback) => {
-                try {
-                    const startDate = fetchInfo.start.toISOString().split('T')[0];
-                    const endDate = fetchInfo.end.toISOString().split('T')[0];
-                    const appointments = await getAppointmentsForEstablishment(establishmentId, startDate, endDate);
-                    const events = appointments.map(appt => ({
-                        id: appt.id,
-                        title: `${appt.service.nombre} - ${appt.user.first_name || ''}`,
-                        start: appt.start_time,
-                        end: appt.end_time,
-                        backgroundColor: appt.estado === 'CONFIRMED' ? '#10B981' : '#EF4444',
-                        borderColor: appt.estado === 'CONFIRMED' ? '#059669' : '#DC2626',
-                        extendedProps: { fullAppointment: appt }
-                    }));
-                    successCallback(events);
-                } catch (error) {
-                    failureCallback(error);
+          initialView: 'timeGridWeek',
+          locale: 'es',
+          headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+          },
+          height: 'auto',
+          allDaySlot: false,
+          eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false },
+          views: {
+            timeGridWeek: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' },
+            timeGridDay: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' }
+          },
+          
+          events: async (fetchInfo, successCallback, failureCallback) => {
+            try {
+              const startDate = fetchInfo.start.toISOString().split('T')[0];
+              const endDate = fetchInfo.end.toISOString().split('T')[0];
+              const appointments = await getAppointmentsForEstablishment(establishmentId, startDate, endDate);
+              
+              const events = appointments.map(appt => {
+                // --- CÓDIGO CLAVE: AÑADIMOS EL NOMBRE DEL STAFF AL TÍTULO ---
+                const staffName = appt.staff_member ? 
+                                  `${appt.staff_member.first_name || ''} ${appt.staff_member.last_name || ''}`.trim() : 
+                                  '';
+                const titlePrefix = appt.service.nombre || '';
+                const clientName = appt.user.first_name || '';
+    
+                let eventTitle = `${titlePrefix} - ${clientName}`;
+                if (staffName) {
+                    eventTitle += ` (con ${staffName})`;
                 }
-            },
-            
-            eventClick: (clickInfo) => {
-                setSelectedEvent(clickInfo.event);
-                setIsModalOpen(true);
+    
+                return {
+                  id: appt.id,
+                  title: eventTitle,
+                  start: appt.start_time,
+                  end: appt.end_time,
+                  backgroundColor: appt.estado === 'CONFIRMED' ? '#10B981' : '#EF4444',
+                  borderColor: appt.estado === 'CONFIRMED' ? '#059669' : '#DC2626',
+                  extendedProps: { fullAppointment: appt }
+                };
+              });
+              successCallback(events);
+            } catch (error) {
+              console.error("Error cargando eventos para el calendario:", error);
+              failureCallback(error);
             }
+          },
+          
+          eventClick: (clickInfo) => {
+            setSelectedEvent(clickInfo.event);
+            setIsModalOpen(true);
+          }
         });
-
+    
         calendarInstanceRef.current = calendar;
         calendar.render();
-
+    
         return () => {
-            if (calendarInstanceRef.current) {
-                calendarInstanceRef.current.destroy();
-                calendarInstanceRef.current = null;
-            }
+          if (calendarInstanceRef.current) {
+            calendarInstanceRef.current.destroy();
+            calendarInstanceRef.current = null;
+          }
         };
-    }, [establishmentId]);
-
-    return (
+      }, [establishmentId]);
+    
+      return (
         <>
-            <div className="page-wrapper">
-                <header className="page-header">
-                    <h1>Agenda de Citas</h1>
-                    {establishmentName && <p>Mostrando agenda para: <strong>{establishmentName}</strong></p>}
-                </header>
-                
-                <Card>
-                    <div ref={calendarEl}></div>
-                </Card>
-            </div>
-
-            <AppointmentDetailModal
-                isOpen={isModalOpen}
-                onClose={handleCloseModal}
-                event={selectedEvent}
-                onCancel={handleCancel}
-                onReschedule={handleReschedule}
-            />
+          <div className="page-wrapper">
+            <header className="page-header">
+              <h1>Agenda de Citas</h1>
+              {establishmentName && <p>Mostrando agenda para: <strong>{establishmentName}</strong></p>}
+            </header>
+            
+            <Card>
+              <div ref={calendarEl}></div>
+            </Card>
+          </div>
+    
+          <AppointmentDetailModal
+            isOpen={isModalOpen}
+            onClose={handleCloseModal}
+            event={selectedEvent}
+            onCancel={handleCancel}
+            onReschedule={handleReschedule}
+          />
         </>
-    );
-};
-
-export default ProviderAppointments;
+      );
+    };
+    
+    export default ProviderAppointments;
