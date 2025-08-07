@@ -38,3 +38,12 @@ export const cancelAppointment = (appointmentId) => {
 export const rescheduleAppointment = (appointmentId, newStartTime) => {
   return apiClient(`/appointments/${appointmentId}/reschedule`, 'PUT', { new_start_time: newStartTime });
 };
+
+
+/**
+ * Obtiene la próxima cita confirmada del cliente autenticado.
+ * @returns {Promise<object|null>} El objeto de la cita o null si no hay.
+ */
+export const getNextClientAppointment = () => {
+  return apiClient('/appointments/client/next', 'GET');
+};

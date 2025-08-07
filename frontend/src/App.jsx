@@ -30,6 +30,7 @@ import ProviderAppointments from './pages/ProviderAppointments';
 import ProviderDashboard from './pages/ProviderDashboard';
 import ManageStaff from './pages/ManageStaff';
 import ManageStaffAvailability from './pages/ManageStaffAvailability';
+import ClientDashboard from './pages/ClientDashboard';
 
 
 
@@ -65,35 +66,40 @@ function App() {
   return (
     <Router>
       <Toaster 
-        position="top-right" // Posición en la pantalla
-        toastOptions={{
-          duration: 5000, // Duración por defecto en milisegundos
-        }}
+        position="top-right"
+        toastOptions={{ duration: 5000 }}
       />
       <Routes>
-        {/* --- GRUPO 1: RUTAS PÚBLICAS CON BARRA DE NAVEGACIÓN --- */}
+        {/* --- GRUPO 1: RUTAS PÚBLICAS --- */}
         <Route element={<PublicLayout token={token} role={role} handleLogout={handleLogout} />}>
           <Route path="/" element={<BrowsePage />} />
           <Route path="/booking/:establishmentId" element={<BookingPage />} />
           <Route path="/booking/success" element={<BookingSuccessPage />} />
         </Route>
 
-        {/* --- GRUPO 2: RUTAS DE AUTENTICACIÓN (sin layout) --- */}
+        {/* --- GRUPO 2: RUTAS DE AUTENTICACIÓN --- */}
         <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
         <Route path="/register/provider" element={!token ? <RegisterProvider /> : <Navigate to="/dashboard" />} />
         <Route path="/reset-password/:token" element={<NewPasswordForm />} />
         <Route path="/register/reset-password" element={<ResetPassword />} />
 
-        {/* --- GRUPO 3: RUTAS PROTEGIDAS (con layout de dashboard) --- */}
+        {/* --- GRUPO 3: RUTAS PROTEGIDAS --- */}
         <Route element={<ProtectedRoute token={token} />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
           <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
+            
+            {/* --- 2. RUTA ÍNDICE AHORA ES CONDICIONAL --- */}
             <Route 
               index 
-              element={role === 'provider' ? <ProviderDashboard /> : <WelcomeDashboard />} 
+              element={
+                role === 'provider' 
+                  ? <ProviderDashboard />    // <-- Si es proveedor, muestra su dashboard
+                  : <ClientDashboard />      // <-- Si es cliente, muestra el nuevo
+              } 
             />
             
+            {/* GRUPO DE RUTAS PARA PROVEEDOR */}
             {role === 'provider' && (
               <Route path="provider">
                 <Route path="profile" element={<ProviderProfile />} />
@@ -108,6 +114,7 @@ function App() {
               </Route>
             )}
 
+            {/* GRUPO DE RUTAS PARA CLIENTE */}
             {role === 'client' && (
               <Route path="client">
                 <Route path="profile" element={<ClientProfile />} />
@@ -119,23 +126,17 @@ function App() {
           </Route>
         </Route>
         
-        {/* --- RUTA COMODÍN FINAL --- */}
+        {/* RUTA COMODÍN FINAL */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
   );
 }
 
-// --- COMPONENTES AUXILIARES ---
-
-const WelcomeDashboard = () => (
-    <div className="page-wrapper">
-        <header className="page-header">
-            <h1>Bienvenido a tu Panel de Control</h1>
-            <p>Usa el menú de la izquierda para navegar por las diferentes secciones.</p>
-        </header>
-    </div>
-);
+// --- 3. ELIMINAMOS WelcomeDashboard PORQUE YA NO SE USA DIRECTAMENTE AQUÍ ---
+// Lo hemos reemplazado por ClientDashboard para los clientes.
+// Si un rol 'admin' necesitara una bienvenida genérica en el futuro,
+// podríamos mover este componente a su propio archivo.
 
 const NotFoundDashboard = () => (
     <div className="page-wrapper" style={{ textAlign: 'center', paddingTop: '5rem' }}>
