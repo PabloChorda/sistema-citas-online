@@ -256,7 +256,7 @@ def cancel_appointment(appointment_id):
 
     return jsonify(appointment.to_dict()), 200
 
-@appointment_bp.route('/appointments/<int:appointment_id>/reschedule', methods=['PUT'])
+
 @appointment_bp.route('/appointments/<int:appointment_id>/reschedule', methods=['PUT'])
 @jwt_required()
 def reschedule_appointment(appointment_id):
@@ -330,3 +330,29 @@ def reschedule_appointment(appointment_id):
         current_app.logger.error(f"La cita {appointment.id} se reprogramó, pero falló el envío de email: {e}", exc_info=True)
 
     return jsonify(appointment.to_dict()), 200
+
+@appointment_bp.route('/appointments/client/next', methods=['GET'])
+@jwt_required()
+def get_client_next_appointment():
+    """
+    GET /api/appointments/client/next
+    ---------------------------------
+    Obtiene la próxima cita confirmada del cliente autenticado.
+    """
+    user_id = get_user_id_from_jwt()
+    if not user_id: return jsonify({"msg": "Token inválido"}), 422
+    
+    # Buscamos la primera cita confirmada que sea en el futuro, ordenada por fecha
+    now_utc = datetime.now(timezone.utc)
+    next_appointment = Appointment.query.filter(
+        Appointment.user_id == user_id,
+        Appointment.start_time >= now_utc,
+        Appointment.estado == 'CONFIRMED'
+    ).order_by(Appointment.start_time.asc()).first()
+
+    if not next_appointment:
+        # Es normal no tener una próxima cita, devolvemos un objeto vacío.
+        return jsonify(None), 200
+
+    # Usamos el to_dict() que ya devuelve toda la info anidada
+    return jsonify(next_appointment.to_dict()), 200
