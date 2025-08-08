@@ -16,31 +16,25 @@ function ResetPassword() {
     setIsSubmitting(true);
     try {
       await requestPasswordReset(email);
-      // Por seguridad, siempre mostramos un mensaje de éxito,
-      // incluso si el email no existe. Esto evita que alguien pueda
-      // adivinar qué correos están registrados en el sistema.
       toast.success('Si el correo existe, se ha enviado un enlace para restablecer tu contraseña.');
     } catch (error) {
-      // Aunque mostramos éxito al usuario, podemos loguear el error real
       console.error("Error en requestPasswordReset:", error);
       toast.error('Ha ocurrido un error. Por favor, intenta de nuevo más tarde.');
     } finally {
       setIsSubmitting(false);
-      // Limpiamos el campo de email después del intento
       setEmail('');
     }
   };
 
   return (
-    // Reutilizamos el layout del login para mantener la consistencia
     <div className="login-container">
       <main className="login-box">
         <header className="login-header">
-          <h1>Restablecer Contraseña</h1>
-          <p>Introduce tu email para recibir el enlace de recuperación</p>
+          <h1 className="text-xl font-semibold text-white">Restablecer Contraseña</h1>
+          <p className="text-sm text-white mt-1">Introduce tu email y te enviaremos un enlace para recuperar el acceso</p>
         </header>
 
-        <form onSubmit={handleSubmit} className="mt-8">
+        <form onSubmit={handleSubmit} className="mt-8 space-y-4">
           <Input
             type="email"
             placeholder="Introduce tu email"
@@ -53,8 +47,8 @@ function ResetPassword() {
           </Button>
         </form>
 
-        <footer className="login-footer">
-          <p>¿Recuerdas tu contraseña? <Link to="/login">Inicia sesión</Link></p>
+        <footer className="login-footer mt-6 text-center text-sm text-gray-500">
+          <p>¿Recuerdas tu contraseña? <Link to="/login" className="text-indigo-600 hover:underline">Inicia sesión</Link></p>
         </footer>
       </main>
     </div>

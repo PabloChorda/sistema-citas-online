@@ -1,12 +1,14 @@
 // src/pages/NewPasswordForm.jsx
 
 import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { resetPasswordWithToken } from '../services/authService';
+import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
 
-
-function NewPasswordForm() {
+function SetNewPassword() {
   const { token } = useParams();
+  const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [success, setSuccess] = useState(false);
@@ -15,50 +17,48 @@ function NewPasswordForm() {
     e.preventDefault();
     try {
       await resetPasswordWithToken(token, password);
+      setMessage('✅ Contraseña actualizada con éxito. Redirigiendo...');
       setSuccess(true);
-      setMessage('✅ Contraseña actualizada correctamente. Ya puedes iniciar sesión.');
+      setTimeout(() => navigate('/login'), 3000);
     } catch (error) {
-      setSuccess(false);
-      setMessage('❌ Error al actualizar la contraseña. El enlace puede estar expirado.');
+      setMessage('❌ El enlace ha expirado o no es válido.');
     }
   };
 
   return (
-    <div className="page-wrapper">
-      <header className="login-header">
-        <h2>🔐 Restablecer Contraseña</h2>
-      </header>
+    <div className="login-container">
+      <main className="login-box">
+        <header className="login-header">
+          <h1 className="text-xl font-semibold text-gray-800">Establecer Nueva Contraseña</h1>
+          <p className="text-sm text-gray-500">Introduce tu nueva contraseña segura</p>
+        </header>
 
-      <main className="login-container">
-        <h1>Ingresa una nueva contraseña</h1>
-        <form onSubmit={handleSubmit}>
-          <label>Nueva contraseña:
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
-          <button type="submit">Actualizar contraseña</button>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-6">
+          <Input
+            type="password"
+            placeholder="Nueva contraseña"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <Button type="submit" variant="primary">
+            Actualizar contraseña
+          </Button>
         </form>
-        {message && (
-          <p className={`login-message ${success ? 'success' : 'error'}`}>{message}</p>
-        )}
 
-        {success && (
-          <p className="register-link">
-            <Link to="/login">Ir a inicio de sesión</Link>
+        {message && (
+          <p className={`mt-4 text-sm ${success ? 'text-green-500' : 'text-red-500'}`}>
+            {message}
           </p>
         )}
-      </main>
 
-      <footer className="login-footer">
-        <p>¿Necesitas ayuda? <a href="mailto:soporte@citafacil.com">Contáctanos</a></p>
-        <p>&copy; {new Date().getFullYear()} CitaFácil. Todos los derechos reservados.</p>
-      </footer>
+        <footer className="login-footer mt-8 text-sm text-gray-500">
+          <p>¿Necesitas ayuda? <a href="mailto:soporte@citafacil.com" className="text-indigo-600 hover:underline">Contáctanos</a></p>
+          <p className="mt-1">&copy; {new Date().getFullYear()} CitaFácil. Todos los derechos reservados.</p>
+        </footer>
+      </main>
     </div>
   );
 }
 
-export default NewPasswordForm;
+export default SetNewPassword;

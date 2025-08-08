@@ -17,15 +17,13 @@ function Login({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-        const data = await loginUser(email, password);
-        onLogin(data.access_token, data.role);
-        
-        toast.success('¡Bienvenido/a de nuevo!');
-
-        const from = location.state?.from?.pathname || '/dashboard';
-        navigate(from, { replace: true });
+      const data = await loginUser(email, password);
+      onLogin(data.access_token, data.role);
+      toast.success('¡Bienvenido/a de nuevo!');
+      const from = location.state?.from?.pathname || '/dashboard';
+      navigate(from, { replace: true });
     } catch (error) {
-        toast.error(error.message || "Error al iniciar sesión. Revisa tus credenciales.");
+      toast.error(error.message || "Error al iniciar sesión.");
     }
   };
 
@@ -33,36 +31,33 @@ function Login({ onLogin }) {
     try {
       const data = await loginWithGoogle(googleToken);
       onLogin(data.access_token, data.role);
-
       toast.success('¡Bienvenido/a de nuevo!');
-
       const from = location.state?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
-
     } catch (error) {
-      toast.error(error.message || "Error en el inicio de sesión con Google.");
+      toast.error(error.message || "Error en el inicio con Google.");
     }
   };
 
   return (
-    <div className="login-container">
-      <main className="login-box">
-        <header className="login-header">
-          <h1>Iniciar Sesión</h1>
-          <p>Accede a tu cuenta para gestionar tus citas</p>
+    <div className="min-h-screen flex items-center justify-center px-4">
+      <main className="w-full max-w-md bg-white rounded-lg shadow-md p-8 space-y-6">
+        <header className="text-center">
+          <h1 className="text-2xl font-semibold text-gray-800">Iniciar Sesión</h1>
+          <p className="text-sm text-gray-500 mt-1">Accede a tu cuenta para gestionar tus citas</p>
         </header>
-        
-        <div style={{ alignSelf: 'center', marginTop: '1.5rem', marginBottom: '1.5rem' }}>
+
+        <div className="flex justify-center">
           <GoogleLoginComponent onLogin={handleGoogleLogin} />
         </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', color: '#9ca3af', margin: '0 0 1.5rem 0' }}>
-          <hr style={{ flexGrow: 1, borderTop: '1px solid #e5e7eb' }} />
-          <span style={{ padding: '0 1rem', fontSize: '0.9rem' }}>O</span>
-          <hr style={{ flexGrow: 1, borderTop: '1px solid #e5e7eb' }} />
+
+        <div className="flex items-center gap-4 text-gray-400 text-sm">
+          <hr className="flex-grow border-gray-200" />
+          <span>O</span>
+          <hr className="flex-grow border-gray-200" />
         </div>
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <Input 
             type="email" 
             placeholder="Email" 
@@ -77,15 +72,15 @@ function Login({ onLogin }) {
             onChange={(e) => setPassword(e.target.value)} 
             required 
           />
-          <Button type="submit" variant="primary">
+          <Button type="submit" variant="primary" className="w-full">
             Entrar
           </Button>
         </form>
-        
-        <footer className="login-footer">
-          <p>¿No tienes cuenta? <Link to="/register">Regístrate</Link></p>
-          <p>¿Eres proveedor? <Link to="/register/provider">Regístrate como proveedor</Link></p>
-          <p><Link to="/register/reset-password">¿Olvidaste tu contraseña?</Link></p>
+
+        <footer className="text-sm text-center text-gray-600 space-y-2">
+          <p>¿No tienes cuenta? <Link to="/register" className="text-indigo-600 hover:underline">Regístrate</Link></p>
+          <p>¿Eres proveedor? <Link to="/register/provider" className="text-indigo-600 hover:underline">Regístrate como proveedor</Link></p>
+          <p><Link to="/register/reset-password" className="text-indigo-600 hover:underline">¿Olvidaste tu contraseña?</Link></p>
         </footer>
       </main>
     </div>

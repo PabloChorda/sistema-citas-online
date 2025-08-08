@@ -47,64 +47,66 @@ function Register() {
 
     return (
         <div className="login-container">
-            <main className="login-box">
-                <header className="login-header">
-                    <h1>Crear Cuenta de Cliente</h1>
-                    <p>Únete para empezar a reservar tus citas</p>
-                </header>
-                
-                <form onSubmit={handleSubmit}>
-                    <Input
-                        type="text"
-                        name="first_name"
-                        placeholder="Nombre"
-                        value={formData.first_name}
-                        onChange={handleChange}
-                        required
-                    />
-                    <Input
-                        type="text"
-                        name="last_name"
-                        placeholder="Apellidos"
-                        value={formData.last_name}
-                        onChange={handleChange}
-                        required
-                    />
-                    <Input
-                        type="email"
-                        name="email"
-                        placeholder="Email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        required
-                    />
-                    <Input
-                        type="password"
-                        name="password"
-                        placeholder="Contraseña"
-                        value={formData.password}
-                        onChange={handleChange}
-                        required
-                    />
-                    <Input
-                        type="tel"
-                        name="phone_number"
-                        placeholder="Teléfono (Opcional)"
-                        value={formData.phone_number}
-                        onChange={handleChange}
-                    />
-                    
-                    <Button type="submit" variant="primary" disabled={isSubmitting}>
-                        {isSubmitting ? 'Registrando...' : 'Registrarse'}
-                    </Button>
-                </form>
-
-                <footer className="login-footer">
-                    <p>¿Ya tienes una cuenta? <Link to="/login">Inicia sesión</Link></p>
-                </footer>
-            </main>
+          <main className="login-box">
+            <header className="login-header">
+              <h1>Crear Cuenta de Cliente</h1>
+              <p>Únete para empezar a reservar tus citas</p>
+            </header>
+      
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Input
+                type="text"
+                name="first_name"
+                placeholder="Nombre"
+                value={formData.first_name}
+                onChange={handleChange}
+                required
+              />
+              <Input
+                type="text"
+                name="last_name"
+                placeholder="Apellidos"
+                value={formData.last_name}
+                onChange={handleChange}
+                required
+              />
+              <Input
+                type="email"
+                name="email"
+                placeholder="Email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
+              <Input
+                type="password"
+                name="password"
+                placeholder="Contraseña"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+              <Input
+                type="tel"
+                name="phone_number"
+                placeholder="Teléfono (Opcional)"
+                value={formData.phone_number}
+                onChange={handleChange}
+              />
+      
+              <div className="pt-2">
+                <Button type="submit" variant="primary" disabled={isSubmitting}>
+                  {isSubmitting ? 'Registrando...' : 'Registrarse'}
+                </Button>
+              </div>
+            </form>
+      
+            <footer className="login-footer">
+              <p>¿Ya tienes una cuenta? <Link to="/login">Inicia sesión</Link></p>
+            </footer>
+          </main>
         </div>
-    );
-}
+      )
+    }
 
 export default Register;
