@@ -4,11 +4,12 @@
   "version": "0.0.0",
   "type": "module",
 "scripts": {
-  "dev": "vite",
+  "dev": "npm run tailwind && vite",
   "build": "vite build",
   "lint": "eslint .",
   "preview": "vite preview",
-  "tailwind": "echo '@tailwind base;@tailwind components;@tailwind utilities;' | npx tailwindcss -i /dev/stdin -o src/index.css --minify"
+  "tailwind": "echo '@tailwind base;@tailwind components;@tailwind utilities;' | npx tailwindcss -i /dev/stdin -o src/index.css --minify",
+  "postinstall": "npm run tailwind"
 },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

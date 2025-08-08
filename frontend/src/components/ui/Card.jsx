@@ -4,14 +4,12 @@ import React from 'react';
 import clsx from 'clsx';
 
 const Card = ({ children, className = '' }) => {
-  // Esta versión es más simple y reutiliza la clase CSS que ya tienes definida.
-  const combinedClassName = clsx('profile-card', className);
-
-  return (
-    <div className={combinedClassName}>
-      {children}
-    </div>
+  const combinedClassName = clsx(
+    'bg-white rounded-xl shadow-md p-6',
+    className
   );
+
+  return <div className={combinedClassName}>{children}</div>;
 };
 
 export default Card;
