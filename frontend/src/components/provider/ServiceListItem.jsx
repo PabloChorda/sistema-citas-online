@@ -1,4 +1,4 @@
-// frontend/src/components/provider/ServiceListItem.jsx
+//frontend/src/components/provider/ServiceListItem.jsx
 
 import React from 'react';
 import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline'; // Iconos para los botones

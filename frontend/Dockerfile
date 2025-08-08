@@ -1,21 +1,16 @@
-# Imagen base
+# frontend/Dockerfile
 FROM node:18-alpine
-
-# Crear carpeta de trabajo
 WORKDIR /app
 
-# Copiar dependencias
+# Copiamos package*.json primero para aprovechar caché en builds futuros
 COPY package*.json ./
+RUN npm install --legacy-peer-deps
 
-# Instalar dependencias
-RUN npm install
-
-# Copiar todo lo demás
+# Copiamos el resto del código
 COPY . .
 
-# Exponer el puerto en el que Vite sirve la app
-EXPOSE 5173
+# Compilamos el CSS purgado (generará src/index.css dentro de la imagen)
+RUN npm run tailwind
 
-# Comando por defecto
-# Usamos 'npm run dev', que sabe dónde encontrar el ejecutable de 'vite'
-CMD ["npm", "run", "dev", "--", "--host"]
+EXPOSE 5173
+CMD ["npm","run","dev","--","--host"]
