@@ -1,15 +1,9 @@
-// frontend/src/components/ui/Card.jsx (Alternativa)
-
+// frontend/src/components/ui/Card.jsx
 import React from 'react';
 import clsx from 'clsx';
 
 const Card = ({ children, className = '' }) => {
-  const combinedClassName = clsx(
-    'bg-white rounded-xl shadow-md p-6',
-    className
-  );
-
-  return <div className={combinedClassName}>{children}</div>;
+  const classes = clsx('bg-white rounded-xl border border-gray-200 shadow-card p-6', className);
+  return <div className={classes}>{children}</div>;
 };
-
 export default Card;

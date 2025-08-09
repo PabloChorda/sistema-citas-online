@@ -1,17 +1,29 @@
 // frontend/src/components/TaxInfoCard.jsx
-import React from 'react';
+import React from "react";
 
 export default function TaxInfoCard({ profile }) {
   return (
-    <div className="profile-card">
-      <div className="profile-card-header">
-        <h3>Información Fiscal</h3>
-        <span className="readonly-indicator">Solo lectura</span>
+    <div className="bg-white rounded-xl shadow-card border border-gray-200 p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-5">
+        <h3 className="text-lg font-semibold text-gray-900">Información Fiscal</h3>
+        <span className="text-xs text-gray-500">Solo lectura</span>
       </div>
-      <div style={{ marginTop: '15px' }}>
-        <p><strong>CIF/NIF:</strong> {profile.cif}</p>
-        <p><strong>Dirección Fiscal:</strong> {profile.direccion_fiscal || 'No especificada'}</p>
-        <p><strong>Tipo de Empresa:</strong> {profile.tipo_empresa || 'No especificado'}</p>
+
+      {/* Contenido */}
+      <div className="grid gap-3 text-sm text-gray-700">
+        <div className="flex items-start">
+          <span className="font-medium w-48 text-left">CIF/NIF:</span>
+          <span>{profile.cif}</span>
+        </div>
+        <div className="flex items-start">
+          <span className="font-medium w-48 text-left">Dirección Fiscal:</span>
+          <span>{profile.direccion_fiscal || "No especificada"}</span>
+        </div>
+        <div className="flex items-start">
+          <span className="font-medium w-48 text-left">Tipo de Empresa:</span>
+          <span>{profile.tipo_empresa || "No especificado"}</span>
+        </div>
       </div>
     </div>
   );

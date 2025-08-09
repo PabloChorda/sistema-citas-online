@@ -1,5 +1,3 @@
-// frontend/src/components/provider/ServiceList.jsx
-
 import React from 'react';
 import ServiceListItem from './ServiceListItem';
 
@@ -12,21 +10,22 @@ const ServiceList = ({ services = [], onEditService, onDeleteService }) => {
       </div>
     );
   }
+
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full bg-white">
-        {/* --- AÑADE LA CLASE AQUÍ --- */}
+      <table className="min-w-full bg-white text-left">
         <thead className="bg-gray-100 text-gray-600 uppercase text-sm leading-normal">
           <tr>
-            <th className="py-3 px-6 text-left">Nombre del Servicio</th>
+            <th className="py-3 px-6">Nombre del Servicio</th>
             <th className="py-3 px-6 text-center">Duración</th>
             <th className="py-3 px-6 text-center">Precio</th>
             <th className="py-3 px-6 text-center">Estado</th>
             <th className="py-3 px-6 text-center">Acciones</th>
           </tr>
         </thead>
-        {/* --- Y TAMBIÉN AQUÍ --- */}
-        <tbody className="text-gray-700 text-sm font-light">
+
+        {/* Fondo más oscuro para el cuerpo (gris claro) */}
+        <tbody className="text-gray-700 text-sm bg-gray-50">
           {services.map((service) => (
             <ServiceListItem
               key={service.id}

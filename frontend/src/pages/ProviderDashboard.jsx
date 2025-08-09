@@ -4,14 +4,13 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getProviderDashboardSummary } from '../services/dashboardService';
 
-// Un pequeño componente para mostrar las tarjetas de estadísticas
 const StatCard = ({ title, value, linkTo, linkText }) => (
-  <div className="bg-white rounded-lg shadow p-6">
-    <h3 className="text-lg font-medium text-gray-500">{title}</h3>
-    <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
+  <div className="bg-white rounded-lg shadow p-4 sm:p-6 w-full">
+    <h3 className="text-sm font-medium text-gray-500">{title}</h3>
+    <p className="mt-2 text-2xl sm:text-3xl font-bold text-gray-900">{value}</p>
     {linkTo && (
       <div className="mt-4">
-        <Link to={linkTo} className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+        <Link to={linkTo} className="text-sm font-mediumfont-semibold text-brand-500 hover:text-brand-600 hover:underline">
           {linkText} →
         </Link>
       </div>
@@ -19,17 +18,17 @@ const StatCard = ({ title, value, linkTo, linkText }) => (
   </div>
 );
 
-// Componente para mostrar una cita individual en la lista de "Hoy"
 const TodayAppointmentItem = ({ appointment }) => (
-  <li className="py-3 flex justify-between items-center">
+  <li className="py-3 flex flex-col sm:flex-row justify-between sm:items-center gap-1">
     <div>
-      <p className="text-md font-medium text-gray-800">{appointment.service.nombre}</p>
+      <p className="text-base font-medium text-gray-800">{appointment.service.nombre}</p>
       <p className="text-sm text-gray-500">con {appointment.user.first_name} {appointment.user.last_name}</p>
     </div>
-    <span className="font-semibold text-gray-700">{new Date(appointment.start_time).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}</span>
+    <span className="text-sm font-semibold text-gray-700">
+      {new Date(appointment.start_time).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+    </span>
   </li>
 );
-
 
 const ProviderDashboard = () => {
   const [summary, setSummary] = useState(null);
@@ -52,32 +51,31 @@ const ProviderDashboard = () => {
     fetchSummary();
   }, []);
 
-  if (loading) return <div className="page-wrapper"><p>Cargando dashboard...</p></div>;
-  if (error) return <div className="page-wrapper"><p className="error-message">{error}</p></div>;
+  if (loading) return <div className="page-wrapper px-4"><p className="text-gray-500">Cargando dashboard...</p></div>;
+  if (error) return <div className="page-wrapper px-4"><p className="text-red-500">{error}</p></div>;
 
   return (
-    <div className="page-wrapper">
-      <header className="page-header">
-        <h1>Panel de Control</h1>
-        <p>Aquí tienes un resumen rápido de tu actividad.</p>
+    <div className="page-wrapper px-4">
+      <header className="page-header mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Panel de Control</h1>
+        <p className="text-sm text-gray-500">Resumen rápido de tu actividad reciente.</p>
       </header>
-      
-      {/* Sección de Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        <StatCard 
-          title="Citas para Hoy" 
+
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+        <StatCard
+          title="Citas para Hoy"
           value={summary?.today_appointments?.length || 0}
+          linkTo="/dashboard/provider/appointments"
+          linkText="Ver agenda completa"
         />
-        <StatCard 
-          title="Próximas Citas (7 días)" 
+        <StatCard
+          title="Próximas Citas (7 días)"
           value={summary?.upcoming_week_count || 0}
         />
-        {/* Podríamos añadir más tarjetas, como "Ingresos del Mes" en el futuro */}
-      </div>
-      
-      {/* Sección de Citas de Hoy */}
-      <div className="profile-card">
-        <h2 className="text-xl font-bold mb-4">Agenda de Hoy</h2>
+      </section>
+
+      <section className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-8">
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Agenda de Hoy</h2>
         {summary?.today_appointments?.length > 0 ? (
           <ul className="divide-y divide-gray-200">
             {summary.today_appointments.map(appt => (
@@ -85,19 +83,18 @@ const ProviderDashboard = () => {
             ))}
           </ul>
         ) : (
-          <p className="text-gray-500">No tienes citas programadas para hoy.</p>
+          <p className="text-sm text-gray-500">No tienes citas programadas para hoy.</p>
         )}
-      </div>
+      </section>
 
-      {/* Sección de Última Reserva (opcional) */}
       {summary?.latest_booking && (
-        <div className="profile-card mt-8">
-          <h2 className="text-xl font-bold mb-4">Última Reserva Recibida</h2>
-          <p><strong>{summary.latest_booking.service.nombre}</strong> para <strong>{summary.latest_booking.user.first_name}</strong></p>
-          <p className="text-sm text-gray-500">
+        <section className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Última Reserva Recibida</h2>
+          <p className="text-sm"><strong>{summary.latest_booking.service.nombre}</strong> para <strong>{summary.latest_booking.user.first_name}</strong></p>
+          <p className="text-sm text-gray-500 mt-1">
             Reservado el {new Date(summary.latest_booking.created_at).toLocaleString('es-ES')}
           </p>
-        </div>
+        </section>
       )}
     </div>
   );

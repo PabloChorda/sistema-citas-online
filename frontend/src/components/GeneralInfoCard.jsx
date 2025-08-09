@@ -1,87 +1,162 @@
 // frontend/src/components/GeneralInfoCard.jsx
-import { useState } from 'react';
-import { updateProviderProfile } from '../services/providerService';
+import { useState } from "react";
+import { updateProviderProfile } from "../services/providerService";
+import Button from "./ui/Button";
 
 export default function GeneralInfoCard({ profile, onProfileUpdate }) {
-    const [isEditing, setIsEditing] = useState(false);
-    const [formData, setFormData] = useState({
-        nombre_comercial: profile.nombre_comercial || '',
-        telefono_contacto: profile.telefono_contacto || '',
-        web: profile.web || '',
-        bio: profile.bio || '',
-        email_contacto: profile.email_contacto || '',
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    nombre_comercial: profile.nombre_comercial || "",
+    telefono_contacto: profile.telefono_contacto || "",
+    web: profile.web || "",
+    bio: profile.bio || "",
+    email_contacto: profile.email_contacto || "",
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prevData) => ({ ...prevData, [name]: value }));
+  };
+
+  const handleCancel = () => {
+    setFormData({
+      nombre_comercial: profile.nombre_comercial || "",
+      telefono_contacto: profile.telefono_contacto || "",
+      web: profile.web || "",
+      bio: profile.bio || "",
+      email_contacto: profile.email_contacto || "",
     });
-    const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState('');
+    setIsEditing(false);
+    setError("");
+  };
 
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prevData => ({ ...prevData, [name]: value }));
-    };
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError("");
+    try {
+      const updatedData = await updateProviderProfile(formData);
+      onProfileUpdate(updatedData);
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error al guardar el perfil:", error);
+      setError(`Error al guardar: ${error.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-    const handleCancel = () => {
-        setFormData({
-            nombre_comercial: profile.nombre_comercial || '',
-            telefono_contacto: profile.telefono_contacto || '',
-            web: profile.web || '',
-            bio: profile.bio || '',
-            email_contacto: profile.email_contacto || '',
-        });
-        setIsEditing(false);
-        setError('');
-    };
+  return (
+    <div className="bg-white rounded-xl shadow-card border border-gray-200 p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-5">
+        <h3 className="text-lg font-semibold text-gray-900">Información General</h3>
+        {!isEditing ? (
+          <Button variant="secondary" onClick={() => setIsEditing(true)}>Editar</Button>
+        ) : (
+          <div className="flex gap-2">
+            <Button onClick={handleSave} disabled={isSaving} variant="primary">
+              {isSaving ? "Guardando..." : "Guardar"}
+            </Button>
+            <Button onClick={handleCancel} disabled={isSaving} variant="secondary">
+              Cancelar
+            </Button>
+          </div>
+        )}
+      </div>
 
-    const handleSave = async () => {
-        setIsSaving(true);
-        setError('');
-        try {
-            const updatedData = await updateProviderProfile(formData);
-            onProfileUpdate(updatedData);
-            setIsEditing(false);
-        } catch (error) {
-            console.error("Error al guardar el perfil:", error);
-            setError(`Error al guardar: ${error.message}`);
-        } finally {
-            setIsSaving(false);
-        }
-    };
+      {error && <p className="text-red-500 text-sm mb-4">{error}</p>}
 
-    return (
-        <div className="profile-card">
-            <div className="profile-card-header">
-                <h3>Información General</h3>
-                {!isEditing ? (
-                    <button onClick={() => setIsEditing(true)}>Editar</button>
-                ) : (
-                    <div>
-                        <button onClick={handleSave} disabled={isSaving} className="button-save">
-                            {isSaving ? 'Guardando...' : 'Guardar'}
-                        </button>
-                        <button onClick={handleCancel} disabled={isSaving} className="button-cancel">
-                            Cancelar
-                        </button>
-                    </div>
-                )}
-            </div>
-            {error && <p className="error-message">{error}</p>}
-            {!isEditing ? (
-                <div>
-                    <p><strong>Email de cuenta:</strong> {profile.email}</p>
-                    <p><strong>Nombre comercial:</strong> {profile.nombre_comercial}</p>
-                    <p><strong>Email de contacto:</strong> {profile.email_contacto || 'No especificado'}</p>
-                    <p><strong>Teléfono de contacto:</strong> {profile.telefono_contacto || 'No especificado'}</p>
-                    <p><strong>Página web:</strong> {profile.web ? <a href={profile.web} target="_blank" rel="noopener noreferrer">{profile.web}</a> : 'No especificada'}</p>
-                    <p><strong>Biografía:</strong> {profile.bio || 'No especificada'}</p>
-                </div>
+      {/* Vista o edición */}
+      {!isEditing ? (
+        <div className="grid gap-3 text-sm text-gray-700">
+          <div className="flex items-start">
+            <span className="font-medium w-48 text-left">Email de cuenta:</span>
+            <span>{profile.email}</span>
+          </div>
+          <div className="flex items-start">
+            <span className="font-medium w-48 text-left">Nombre comercial:</span>
+            <span>{profile.nombre_comercial}</span>
+          </div>
+          <div className="flex items-start">
+            <span className="font-medium w-48 text-left">Email de contacto:</span>
+            <span>{profile.email_contacto || "No especificado"}</span>
+          </div>
+          <div className="flex items-start">
+            <span className="font-medium w-48 text-left">Teléfono de contacto:</span>
+            <span>{profile.telefono_contacto || "No especificado"}</span>
+          </div>
+          <div className="flex items-start">
+            <span className="font-medium w-48 text-left">Página web:</span>
+            {profile.web ? (
+              <a href={profile.web} target="_blank" rel="noopener noreferrer" className="text-accent-600 hover:underline">
+                {profile.web}
+              </a>
             ) : (
-                <div className="form-grid">
-                    <label><span>Nombre comercial:</span><input type="text" name="nombre_comercial" value={formData.nombre_comercial} onChange={handleInputChange} /></label>
-                    <label><span>Email de contacto:</span><input type="email" name="email_contacto" value={formData.email_contacto} onChange={handleInputChange} /></label>
-                    <label><span>Teléfono de contacto:</span><input type="tel" name="telefono_contacto" value={formData.telefono_contacto} onChange={handleInputChange} /></label>
-                    <label><span>Página web:</span><input type="url" name="web" placeholder="https://ejemplo.com" value={formData.web} onChange={handleInputChange} /></label>
-                    <label className="full-width"><span>Biografía:</span><textarea name="bio" value={formData.bio} onChange={handleInputChange} rows="4"></textarea></label>
-                </div>
+              <span>No especificada</span>
             )}
+          </div>
+          <div className="flex items-start">
+            <span className="font-medium w-48 text-left">Biografía:</span>
+            <span className="whitespace-pre-line">{profile.bio || "No especificada"}</span>
+          </div>
         </div>
-    );
+      ) : (
+        <div className="grid gap-4">
+          <label className="text-sm text-left">
+            Nombre comercial:
+            <input
+              type="text"
+              name="nombre_comercial"
+              value={formData.nombre_comercial}
+              onChange={handleInputChange}
+              className="mt-1 block w-full rounded-lg border border-gray-300 p-2"
+            />
+          </label>
+          <label className="text-sm text-left">
+            Email de contacto:
+            <input
+              type="email"
+              name="email_contacto"
+              value={formData.email_contacto}
+              onChange={handleInputChange}
+              className="mt-1 block w-full rounded-lg border border-gray-300 p-2"
+            />
+          </label>
+          <label className="text-sm text-left">
+            Teléfono de contacto:
+            <input
+              type="tel"
+              name="telefono_contacto"
+              value={formData.telefono_contacto}
+              onChange={handleInputChange}
+              className="mt-1 block w-full rounded-lg border border-gray-300 p-2"
+            />
+          </label>
+          <label className="text-sm text-left">
+            Página web:
+            <input
+              type="url"
+              name="web"
+              placeholder="https://ejemplo.com"
+              value={formData.web}
+              onChange={handleInputChange}
+              className="mt-1 block w-full rounded-lg border border-gray-300 p-2"
+            />
+          </label>
+          <label className="text-sm text-left">
+            Biografía:
+            <textarea
+              name="bio"
+              value={formData.bio}
+              onChange={handleInputChange}
+              rows="4"
+              className="mt-1 block w-full rounded-lg border border-gray-300 p-2"
+            ></textarea>
+          </label>
+        </div>
+      )}
+    </div>
+  );
 }
