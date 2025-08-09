@@ -2,44 +2,69 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { useLocation } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import Card from '../components/ui/Card';
+import Button from '../components/ui/Button';
 
 // Servicios de API
-import { getAvailability, createAvailabilityRule, deleteAvailabilityRule, updateAvailabilityRule } from '../services/availabilityService';
+import {
+  getAvailability,
+  createAvailabilityRule,
+  deleteAvailabilityRule,
+  updateAvailabilityRule,
+} from '../services/availabilityService';
 
-// Componentes
-import DayAvailability from '../components/availability/DayAvailability';
+// Modal existente
 import AvailabilityModal from '../components/availability/AvailabilityModal';
 
-// Hook personalizado para leer parámetros de la URL
-function useQuery() {
-  const { search } = useLocation();
-  return useMemo(() => new URLSearchParams(search), [search]);
-}
+// OJO: usa ClockIcon (no Clock)
+import { PencilIcon, TrashIcon, PlusIcon, ClockIcon } from '@heroicons/react/24/outline';
 
-const DAYS_OF_WEEK = ['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'];
+const DAYS_OF_WEEK = [
+  'LUNES',
+  'MARTES',
+  'MIERCOLES',
+  'JUEVES',
+  'VIERNES',
+  'SABADO',
+  'DOMINGO',
+];
+
+const DayCardSkeleton = () => (
+  <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-card">
+    <div className="flex items-center justify-between">
+      <div className="h-5 w-24 rounded bg-gray-200" />
+      <div className="h-9 w-28 rounded bg-gray-200" />
+    </div>
+    <div className="mt-4 space-y-2">
+      <div className="h-10 w-full rounded bg-gray-100" />
+      <div className="h-10 w-full rounded bg-gray-100" />
+      <div className="h-10 w-2/3 rounded bg-gray-100" />
+    </div>
+  </div>
+);
 
 const ManageAvailability = () => {
-  const query = useQuery();
-  const establishmentId = query.get('est_id');
+  const [searchParams] = useSearchParams();
+  const establishmentId = searchParams.get('est_id');
+  const establishmentName = searchParams.get('name'); // opcional
 
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Estados para controlar el modal
+  // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [ruleToEdit, setRuleToEdit] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
 
-  // Función para cargar los datos de disponibilidad desde la API
+  // Carga datos
   const fetchAvailability = useCallback(async () => {
     if (!establishmentId) return;
     try {
       setLoading(true);
       const response = await getAvailability(establishmentId);
-      setRules(response);
+      setRules(response || []);
       setError(null);
     } catch (err) {
       setError(err.message || 'Error al cargar la disponibilidad.');
@@ -49,113 +74,210 @@ const ManageAvailability = () => {
     }
   }, [establishmentId]);
 
-  // Cargar los datos iniciales cuando el componente se monta
   useEffect(() => {
     fetchAvailability();
   }, [fetchAvailability]);
 
-  // Agrupamos las reglas por día para facilitar el renderizado
+  // Agrupar por día y ordenar
   const rulesByDay = useMemo(() => {
     return DAYS_OF_WEEK.reduce((acc, day) => {
-      acc[day] = rules.filter(rule => rule.dia_semana === day).sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
+      acc[day] = (rules || [])
+        .filter((r) => r.dia_semana === day)
+        .sort((a, b) => a.hora_inicio.localeCompare(b.hora_inicio));
       return acc;
     }, {});
   }, [rules]);
 
-
-  // --- MANEJADORES DE EVENTOS ---
-
+  // Handlers
   const handleOpenModal = (day = null, rule = null) => {
     setSelectedDay(day);
     setRuleToEdit(rule);
     setIsModalOpen(true);
   };
-
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setRuleToEdit(null);
     setSelectedDay(null);
   };
-
   const handleSaveRule = async (formData) => {
-    // Definimos la promesa de guardado. Será una actualización o una creación.
     const savePromise = ruleToEdit
       ? updateAvailabilityRule(ruleToEdit.id, formData)
       : createAvailabilityRule(establishmentId, formData);
-
     try {
-      // Usamos toast.promise para manejar los estados de la promesa automáticamente
-      await toast.promise(
-        savePromise,
-        {
-          loading: 'Guardando horario...',
-          success: '¡Horario guardado con éxito!',
-          error: (err) => err.message || 'No se pudo guardar el horario.', // Muestra el error específico de la API
-        }
-      );
-
+      await toast.promise(savePromise, {
+        loading: 'Guardando horario...',
+        success: '¡Horario guardado con éxito!',
+        error: (err) => err.message || 'No se pudo guardar el horario.',
+      });
       handleCloseModal();
-      await fetchAvailability(); // Recargamos para ver los cambios
-
+      await fetchAvailability();
     } catch (err) {
-      // toast.promise ya muestra el error, pero dejamos el console.error para depuración
       console.error('Fallo en handleSaveRule:', err);
     }
   };
-  
   const handleDeleteRule = async (ruleId) => {
-    // window.confirm sigue siendo una buena opción para acciones destructivas
     if (window.confirm('¿Estás seguro de que quieres eliminar este horario?')) {
       try {
         await deleteAvailabilityRule(ruleId);
-        
-        // Mostramos un toast de éxito
         toast.success('Horario eliminado correctamente.');
-        
-        await fetchAvailability(); // Recargamos para ver los cambios
-
+        await fetchAvailability();
       } catch (err) {
-        // Mostramos un toast de error
         toast.error(err.message || 'No se pudo eliminar el horario.');
-        
         console.error('Error al eliminar la regla:', err);
       }
     }
   };
 
-
+  // Render
   if (!establishmentId) {
-    return <div className="page-wrapper"><p className="error-message">Error: Falta el ID del establecimiento en la URL.</p></div>;
+    return (
+      <div className="page-wrapper">
+        <header className="page-header">
+          <h1 className="text-2xl font-semibold text-gray-900 m-0">Gestionar Disponibilidad</h1>
+        </header>
+        <Card className="p-8">
+          <p className="text-gray-700">Error: Falta el ID del establecimiento en la URL.</p>
+          <Link
+            to="/dashboard/provider/establishments"
+            className="mt-4 inline-block font-semibold text-brand-600 hover:text-brand-700 hover:underline"
+          >
+            Volver a mis establecimientos
+          </Link>
+        </Card>
+      </div>
+    );
   }
-  
+
   return (
     <div className="page-wrapper">
-      <header className="page-header">
-        <h1>Gestionar Disponibilidad</h1>
-        <p>Define tus horarios de trabajo recurrentes. Estos se usarán para generar los huecos de cita.</p>
+      {/* Header sticky en móvil para tener contexto siempre visible */}
+      <header className="page-header sticky top-0 z-10 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
+        <h1 className="text-2xl font-semibold text-gray-900 m-0">Gestionar Disponibilidad</h1>
+        <p className="text-gray-600 mt-1">
+          Establecimiento:{' '}
+          <strong>{establishmentName ? decodeURIComponent(establishmentName) : `ID ${establishmentId}`}</strong>
+        </p>
+        <p className="text-gray-600">
+          Define tus horarios de trabajo recurrentes. Estos se usarán para generar los huecos de cita.
+        </p>
       </header>
 
-      {loading && <p className="p-4">Cargando horarios...</p>}
-      {error && <p className="error-message p-4">{error}</p>}
-      
-      {!loading && !error && (
-        // Usamos una Card para envolver la lista de días
+      {/* Lista de días: móvil 1 columna con acordeón; desktop grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <DayCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : error ? (
         <Card>
-          <div className="divide-y divide-gray-200">
-            {DAYS_OF_WEEK.map(day => (
-              <DayAvailability
-                key={day}
-                dayName={day.charAt(0).toUpperCase() + day.slice(1).toLowerCase()}
-                rules={rulesByDay[day] || []}
-                onAdd={() => handleOpenModal(day)}
-                onEdit={(rule) => handleOpenModal(day, rule)}
-                onDelete={handleDeleteRule}
-              />
-            ))}
-          </div>
+          <p className="p-4 text-red-600">{error}</p>
         </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
+          {DAYS_OF_WEEK.map((day, idx) => {
+            const dayRules = rulesByDay[day] || [];
+            const dayLabel = day.charAt(0).toUpperCase() + day.slice(1).toLowerCase();
+
+            return (
+              <details
+                key={day}
+                // En móvil se cierra/abre; en desktop se deja abierto
+                open={idx === 0} // primer día abierto por defecto
+                className="rounded-xl border border-gray-200 bg-white shadow-card"
+              >
+                {/* Summary = cabecera clicable */}
+                <summary className="flex list-none cursor-pointer items-center justify-between gap-2 px-4 py-3 md:cursor-default">
+                  <h3 className="text-base font-semibold text-gray-900">{dayLabel}</h3>
+                  <div className="flex items-center gap-2">
+                    <span className="hidden text-xs text-gray-500 md:inline">{dayRules.length} franjas</span>
+                    <Button
+                      variant="secondarySoft"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault(); // evita toggle del <details>
+                        handleOpenModal(day);
+                      }}
+                      className="md:mr-1"
+                    >
+                      <PlusIcon className="h-4 w-4 mr-2" />
+                      <span className="hidden sm:inline">Añadir franja</span>
+                      <span className="sm:hidden">Añadir</span>
+                    </Button>
+                  </div>
+                </summary>
+
+                {/* Contenido del día */}
+                <div className="px-4 pb-4">
+                  {dayRules.length > 0 ? (
+                    <ul
+                      className="
+                        mt-1 space-y-2
+                        max-h-[42vh] overflow-y-auto pr-1
+                        md:max-h-none md:overflow-visible
+                      "
+                    >
+                      {dayRules.map((rule) => (
+                        <li
+                          key={rule.id}
+                          className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ClockIcon className="h-4 w-4 text-gray-500 shrink-0" />
+                            <p className="truncate text-sm font-medium text-gray-900">
+                              {rule.hora_inicio?.slice(0, 5)} — {rule.hora_fin?.slice(0, 5)}
+                            </p>
+                            {rule.intervalo_minutos ? (
+                              <span className="ml-2 shrink-0 rounded-full bg-primary-50 text-primary-700 border border-primary-200 px-2 py-0.5 text-[11px]">
+                                cada {rule.intervalo_minutos}’
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={() => handleOpenModal(day, rule)}
+                              className="text-brand-600 hover:text-brand-700"
+                              title="Editar franja"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              onClick={() => handleDeleteRule(rule.id)}
+                              className="text-danger hover:text-red-700"
+                              title="Eliminar franja"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="mt-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600">
+                      No hay franjas para este día.
+                    </div>
+                  )}
+
+                  {/* Botón extra full-width en móvil para accesibilidad */}
+                  <div className="mt-3 md:hidden">
+                    <Button className="w-full" onClick={() => handleOpenModal(day)}>
+                      <PlusIcon className="h-4 w-4 mr-2" />
+                      Añadir franja
+                    </Button>
+                  </div>
+                </div>
+              </details>
+            );
+          })}
+        </div>
       )}
 
+      {/* Modal (reutiliza tu componente) */}
       <AvailabilityModal
         isOpen={isModalOpen}
         onClose={handleCloseModal}

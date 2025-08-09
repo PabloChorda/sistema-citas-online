@@ -53,7 +53,7 @@ function SetNewPassword() {
         )}
 
         <footer className="login-footer mt-8 text-sm text-gray-500">
-          <p>¿Necesitas ayuda? <a href="mailto:soporte@citafacil.com" className="text-indigo-600 hover:underline">Contáctanos</a></p>
+          <p>¿Necesitas ayuda? <a href="mailto:soporte@citafacil.com" className="font-semibold text-brand-500 hover:text-brand-600 hover:underline">Contáctanos</a></p>
           <p className="mt-1">&copy; {new Date().getFullYear()} CitaFácil. Todos los derechos reservados.</p>
         </footer>
       </main>

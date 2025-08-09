@@ -27,6 +27,7 @@ function ResetPassword() {
   };
 
   return (
+    <div className="auth-page">
     <div className="login-container">
       <main className="login-box">
         <header className="login-header">
@@ -48,9 +49,10 @@ function ResetPassword() {
         </form>
 
         <footer className="login-footer mt-6 text-center text-sm text-gray-500">
-          <p>¿Recuerdas tu contraseña? <Link to="/login" className="text-indigo-600 hover:underline">Inicia sesión</Link></p>
+          <p>¿Recuerdas tu contraseña? <Link to="/login" className="font-semibold text-brand-500 hover:text-brand-600 hover:underline">Inicia sesión</Link></p>
         </footer>
       </main>
+    </div>
     </div>
   );
 }

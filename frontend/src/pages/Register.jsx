@@ -46,6 +46,7 @@ function Register() {
     };
 
     return (
+      <div className="auth-page">
         <div className="login-container">
           <main className="login-box">
             <header className="login-header">
@@ -105,6 +106,7 @@ function Register() {
               <p>¿Ya tienes una cuenta? <Link to="/login">Inicia sesión</Link></p>
             </footer>
           </main>
+        </div>
         </div>
       )
     }

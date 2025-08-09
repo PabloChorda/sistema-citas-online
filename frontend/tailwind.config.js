@@ -1,21 +1,33 @@
 // frontend/tailwind.config.js
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  // (opcional) si quieres dark mode por clase:
+  // darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        brand: {
-          50:  '#eef2ff',
-          100: '#e0e7ff',
-          500: '#4f46e5',   // primary
-          600: '#4338ca',
-          700: '#3730a3',
+        primary: {
+          50:  '#F4F5F6',
+          100: '#E1E4E6',
+          500: '#1D242B',
+          600: '#161B20',
+          700: '#11161A',
         },
-        accent:  '#10b981',  // verde
-        danger:  '#ef4444',
+        brand: {
+          50:  '#E6F4FB',
+          100: '#B3E0F7',
+          500: '#0077C0',
+          600: '#0066A8',
+          700: '#004F80',
+        },
+        accent: '#10b981',
+        danger: '#ef4444',
       },
       fontFamily: {
         sans: ['"Inter"', 'ui-sans-serif', 'system-ui'],
+      },
+      boxShadow: {
+        card: '0 8px 24px rgba(3, 7, 18, 0.06)', // para 'shadow-card'
       },
     },
   },

@@ -40,6 +40,7 @@ function Login({ onLogin }) {
   };
 
   return (
+    <div className="auth-page">
     <div className="min-h-screen flex items-center justify-center px-4">
       <main className="w-full max-w-md bg-white rounded-lg shadow-md p-8 space-y-6">
         <header className="text-center">
@@ -78,11 +79,12 @@ function Login({ onLogin }) {
         </form>
 
         <footer className="text-sm text-center text-gray-600 space-y-2">
-          <p>¿No tienes cuenta? <Link to="/register" className="text-indigo-600 hover:underline">Regístrate</Link></p>
-          <p>¿Eres proveedor? <Link to="/register/provider" className="text-indigo-600 hover:underline">Regístrate como proveedor</Link></p>
-          <p><Link to="/register/reset-password" className="text-indigo-600 hover:underline">¿Olvidaste tu contraseña?</Link></p>
+          <p>¿No tienes cuenta? <Link to="/register" className=" font-semibold text-brand-500 hover:underline">Regístrate</Link></p>
+          <p>¿Eres proveedor? <Link to="/register/provider" className=" font-semibold text-brand-500 hover:underline">Regístrate como proveedor</Link></p>
+          <p><Link to="/register/reset-password" className=" font-semibold text-brand-500 hover:underline">¿Olvidaste tu contraseña?</Link></p>
         </footer>
       </main>
+    </div>
     </div>
   );
 }
