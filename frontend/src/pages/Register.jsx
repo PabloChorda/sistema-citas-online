@@ -95,7 +95,7 @@ function Register() {
                 onChange={handleChange}
               />
       
-              <div className="pt-2">
+              <div className="pt-2 flex justify-center">
                 <Button type="submit" variant="primary" disabled={isSubmitting}>
                   {isSubmitting ? 'Registrando...' : 'Registrarse'}
                 </Button>
