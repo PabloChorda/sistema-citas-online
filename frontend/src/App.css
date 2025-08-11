@@ -41,9 +41,6 @@ a:hover { text-decoration: underline; }
   /* gradient guardado */
   background-image: radial-gradient(
     circle,
-    #fafafa,
-    #dedeee,
-    #bfc3e4,
     #9baad9,
     #7193cf,
     #5782bd,
@@ -52,7 +49,8 @@ a:hover { text-decoration: underline; }
     #1c517b,
     #1f425f,
     #1f3344,
-    #1d242b
+    #1d242b,
+    #0e1215
   );
   background-size: cover;
   background-attachment: fixed;
