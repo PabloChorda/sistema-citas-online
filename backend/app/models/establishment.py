@@ -60,9 +60,11 @@ class Establishment(BaseModel):
 
     def __repr__(self):
         return f'<Establishment ID {self.id}: {self.nombre} (Provider ID: {self.provider_id})>'
-    
-    def to_dict(self):
-        """Serializa el objeto Establishment a un diccionario."""
+
+    # ===================== Serializadores =====================
+
+    def to_public_dict(self):
+        """Serialización segura para vistas públicas (marketplace/booking)."""
         provider_info = self.provider.to_dict(include_establishments=False) if self.provider else None
         
         return {
@@ -74,9 +76,38 @@ class Establishment(BaseModel):
             'localidad': self.localidad,
             'activo': self.activo,
             'has_multiple_staff': self.has_multiple_staff,
+            'descripcion_publica': self.descripcion_publica,
+            'web': self.web,
+            'slug': self.slug,
+            'imagen_destacada': self.imagen_destacada,
+            'url_map_embed': self.url_map_embed,
+            'tiene_acceso_discapacitados': self.tiene_acceso_discapacitados,
+            'aparcamiento_disponible': self.aparcamiento_disponible,
+            'visible_en_busquedas': self.visible_en_busquedas,
             'provider_info': provider_info,
             **self.to_dict_base()
         }
+
+    def to_private_dict(self):
+        """Serialización completa para el dashboard (autenticado)."""
+        d = self.to_public_dict()
+        d.update({
+            'codigo_postal': self.codigo_postal,
+            'telefono': self.telefono,
+            'email': self.email,
+            'horario_lunes_viernes': self.horario_lunes_viernes,
+            'horario_sabado': self.horario_sabado,
+            'idiomas_hablados': self.idiomas_hablados,
+            'verificado': self.verificado,
+            'abre_sabados': self.abre_sabados,
+            'cierra_sabado': self.cierra_sabado,
+        })
+        return d
+
+    # Compatibilidad si hay código antiguo que llama to_dict()
+    def to_dict(self, include_private=True):
+        return self.to_private_dict() if include_private else self.to_public_dict()
+
 
 class Staff(BaseModel):
     __tablename__ = 'staff'

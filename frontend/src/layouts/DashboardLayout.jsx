@@ -45,9 +45,13 @@ export default function DashboardLayout({ handleLogout }) {
   }, [handleLogout, navigate]);
 
   const getLinkStyle = (path) => {
-    const isActive =
-      location.pathname === path ||
-      (path !== '/dashboard' && location.pathname.startsWith(path));
+    const isActivePath = (target) => {
+      if (target === '/') return location.pathname === '/';
+      if (target === '/dashboard') return location.pathname === '/dashboard';
+      return location.pathname === target || location.pathname.startsWith(`${target}/`);
+    };
+    const isActive = isActivePath(path);
+
     return {
       color: isActive ? '#ffffff' : '#e2e8f0',
       textDecoration: 'none',
@@ -135,7 +139,6 @@ export default function DashboardLayout({ handleLogout }) {
 
   return (
     <div
-      // Contenedor raíz seguro en iOS/Android
       style={{
         minHeight: '100dvh',
         display: 'flex',
@@ -163,7 +166,7 @@ export default function DashboardLayout({ handleLogout }) {
         </button>
       )}
 
-      {/* Sidebar desktop */}
+      {/* Sidebar desktop (fijo/sticky) */}
       <aside
         className="sidebar"
         style={{
@@ -173,12 +176,27 @@ export default function DashboardLayout({ handleLogout }) {
           background: '#111827',
           color: '#e5e7eb',
           padding: '16px 12px',
+          position: 'sticky',     // clave: sidebar fijo en scroll
+          top: 0,
+          height: '100dvh',       // ocupa alto completo
+          boxSizing: 'border-box',
+          overflow: 'hidden',     // el nav interno hará scroll
         }}
       >
         <h2 className="sidebar-brand" style={{ margin: 0 }}>
           CitaFácil
         </h2>
-        <nav className="sidebar-nav" style={{ marginTop: 12, flex: 1, overflowY: 'auto' }}>
+
+        <nav
+          className="sidebar-nav"
+          style={{
+            marginTop: 12,
+            flex: 1,
+            overflowY: 'auto',      // el contenido del menú hace scroll
+            minHeight: 0,
+            paddingRight: 4,           // evitar “pegar” el scroll al borde
+          }}
+        >
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             <li>
               <Link to="/dashboard" style={getLinkStyle('/dashboard')}>
@@ -188,8 +206,18 @@ export default function DashboardLayout({ handleLogout }) {
             {renderNavLinks()}
           </ul>
         </nav>
-        <div className="sidebar-footer" style={{ paddingTop: 12 }}>
-          <button onClick={onLogoutClick} style={{ width: '100%' }}>
+
+        {/* Footer sticky: siempre visible al fondo */}
+        <div
+          className="sidebar-footer"
+          style={{
+            position: 'sticky',     // clave: se “pega” al fondo visible
+            bottom: 0,
+            background: '#111827',
+            paddingTop: 10,
+          }}
+        >
+          <button onClick={onLogoutClick} style={{ width: '100%', padding: '10px 12px' }}>
             Cerrar Sesión
           </button>
         </div>
@@ -270,7 +298,10 @@ export default function DashboardLayout({ handleLogout }) {
                 onClick={() => setDrawerOpen(false)}
               >
                 <li>
-                  <Link to="/dashboard" style={{ ...getLinkStyle('/dashboard'), display: 'block', width: '100%' }}>
+                  <Link
+                    to="/dashboard"
+                    style={{ ...getLinkStyle('/dashboard'), display: 'block', width: '100%' }}
+                  >
                     Inicio
                   </Link>
                 </li>
@@ -287,7 +318,7 @@ export default function DashboardLayout({ handleLogout }) {
         </>
       )}
 
-      {/* Contenido principal con scroll vertical SIEMPRE habilitado */}
+      {/* Contenido principal */}
       <main
         className="main-content"
         style={{
@@ -296,7 +327,6 @@ export default function DashboardLayout({ handleLogout }) {
           overflowY: 'auto',
           WebkitOverflowScrolling: 'touch',
           padding: 16,
-          // Evita scroll lateral accidental en móvil
           overflowX: 'clip',
         }}
       >
