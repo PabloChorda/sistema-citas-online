@@ -15,7 +15,7 @@ def _jwt_secret():
 
 def make_magic_token(user_id: int, phone_e164: str, ttl_days: int = 7) -> str:
     payload = {
-        "sub": int(user_id),
+        "sub": str(user_id),
         "pn": phone_e164,
         "typ": "magic-booking",
         "exp": datetime.now(timezone.utc) + timedelta(days=ttl_days),
