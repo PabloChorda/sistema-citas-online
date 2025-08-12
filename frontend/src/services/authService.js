@@ -103,6 +103,7 @@ export async function redeemMagicToken(token) {
     try {
       localStorage.setItem('accessToken', access_token);
       localStorage.setItem('authUser', JSON.stringify({ user_id, role }));
+      localStorage.setItem('userRole', role); 
     } catch (_) {
       // evitar romper si storage no está disponible
     }

@@ -31,6 +31,7 @@ import ProviderDashboard from './pages/ProviderDashboard';
 import ManageStaff from './pages/ManageStaff';
 import ManageStaffAvailability from './pages/ManageStaffAvailability';
 import ClientDashboard from './pages/ClientDashboard';
+import Magic from './pages/Magic';
 
 
 
@@ -73,6 +74,7 @@ function App() {
         {/* --- GRUPO 1: RUTAS PÚBLICAS --- */}
         <Route element={<PublicLayout token={token} role={role} handleLogout={handleLogout} />}>
           <Route path="/" element={<BrowsePage />} />
+          <Route path="/magic" element={<Magic />} /> 
           <Route path="/booking/:establishmentId" element={<BookingPage />} />
           <Route path="/booking/success" element={<BookingSuccessPage />} />
         </Route>
