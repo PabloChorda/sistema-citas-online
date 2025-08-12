@@ -14,6 +14,9 @@ from app.models import User, Provider
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from flask_cors import cross_origin
+import os, urllib.parse
+from app.services.magic_links import create_magic_link_for_phone, redeem_magic_token
+
 
 
 bp = Blueprint('auth', __name__)
@@ -336,5 +339,71 @@ def google_oauth_login():
         current_app.logger.error(f"Error en login social: {e}", exc_info=True)
         return jsonify({"msg": "Error en login social", "error": str(e)}), 500
 
+@bp.route('/whatsapp/init', methods=['POST'])
+@jwt_required()
+def whatsapp_init():
+    """
+    Crea un enlace mágico para que un cliente reserve desde WhatsApp.
+    Body: { "phone_number": "+34..." }
+    Respuesta: { "url": "http://localhost:5173/magic?token=..." , "user_id": <id_cliente> }
+    """
+    # El caller debe estar autenticado y tener rol válido
+    current_user_id_str = get_jwt_identity()
+    try:
+        current_user_id = int(current_user_id_str)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "Identidad del token inválida"}), 422
+
+    caller = User.query.get(current_user_id)
+    if not caller:
+        return jsonify({"msg": "No autorizado"}), 401
+
+    if caller.role not in ("provider", "staff", "admin"):
+        return jsonify({"msg": "No autorizado"}), 403
+
+    data = request.get_json(silent=True) or {}
+    phone = (data.get("phone_number") or "").strip()
+    if not phone:
+        return jsonify({"msg": "phone_number requerido"}), 400
+
+    try:
+        token, target_user = create_magic_link_for_phone(phone, purpose="booking")
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error creando magic link: {e}", exc_info=True)
+        return jsonify({"msg": "Error interno creando enlace"}), 500
+
+    base = os.getenv("MAGIC_LINK_BASE_URL", "http://localhost:5173/magic")
+    url = f"{base}?token={urllib.parse.quote(token)}"
+    return jsonify({"url": url, "user_id": target_user.user_id}), 201
+
+@bp.route('/magic', methods=['GET'])
+def magic():
+    """
+    Valida el token mágico y emite un access_token normal.
+    Query: /auth/magic?token=...
+    Respuesta: { "access_token": "...", "user_id": ..., "role": "..." }
+    """
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return jsonify({"msg": "token requerido"}), 400
+
+    try:
+        user = redeem_magic_token(token)
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error validando magic link: {e}", exc_info=True)
+        return jsonify({"msg": "Error interno validando enlace"}), 500
+
+    # Mantengo el mismo formato que tu /login (identity como str y sin refresh)
+    access_token = create_access_token(identity=str(user.user_id))
+
+    return jsonify({
+        "access_token": access_token,
+        "user_id": user.user_id,
+        "role": user.role
+    }), 200
 
 
