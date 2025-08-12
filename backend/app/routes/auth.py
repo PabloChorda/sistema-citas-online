@@ -14,7 +14,8 @@ from app.models import User, Provider
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from flask_cors import cross_origin
-import os, urllib.parse
+import os
+from urllib.parse import urlencode
 from app.services.magic_links import create_magic_link_for_phone, redeem_magic_token
 
 
@@ -344,7 +345,7 @@ def google_oauth_login():
 def whatsapp_init():
     """
     Crea un enlace mágico para que un cliente reserve desde WhatsApp.
-    Body: { "phone_number": "+34..." }
+    Body: { "phone_number": "+34...", "next": "/booking/123?prefill=true" }  # 'next' opcional
     Respuesta: { "url": "http://localhost:5173/magic?token=..." , "user_id": <id_cliente> }
     """
     # El caller debe estar autenticado y tener rol válido
@@ -363,8 +364,15 @@ def whatsapp_init():
 
     data = request.get_json(silent=True) or {}
     phone = (data.get("phone_number") or "").strip()
+    next_path = (data.get("next") or "").strip()  # opcional
+
     if not phone:
         return jsonify({"msg": "phone_number requerido"}), 400
+
+    # Seguridad: evita open redirects. Solo permitimos rutas relativas comenzando por "/"
+    if next_path and not next_path.startswith("/"):
+        current_app.logger.warning(f"Ignorando 'next' no relativo: {next_path!r}")
+        next_path = ""
 
     try:
         token, target_user = create_magic_link_for_phone(phone, purpose="booking")
@@ -375,7 +383,11 @@ def whatsapp_init():
         return jsonify({"msg": "Error interno creando enlace"}), 500
 
     base = os.getenv("MAGIC_LINK_BASE_URL", "http://localhost:5173/magic")
-    url = f"{base}?token={urllib.parse.quote(token)}"
+    params = {"token": token}
+    if next_path:
+        params["next"] = next_path
+
+    url = f"{base}?{urlencode(params)}"
     return jsonify({"url": url, "user_id": target_user.user_id}), 201
 
 @bp.route('/magic', methods=['GET'])
