@@ -13,6 +13,7 @@ from .establishment import Establishment, Staff
 from .service import Service, staff_services
 from .scheduling import AvailabilityRule, TimeBlock, Appointment,StaffAvailabilityRule
 from .tag import Tag, EstablishmentTag
+from .magic_link import MagicLink 
 
 __all__ = [
     'BaseModel',
@@ -28,5 +29,6 @@ __all__ = [
     'TimeBlock',
     'Appointment',
     'Tag',
-    'EstablishmentTag'
+    'EstablishmentTag',
+      'MagicLink'
 ]
