@@ -22,6 +22,14 @@ from app.services.magic_links import create_magic_link_for_phone, redeem_magic_t
 
 bp = Blueprint('auth', __name__)
 
+def _profile_complete(user):
+    # Consideramos incompleto si falta nombre/apellidos o si el email es autogenerado
+    if not user.first_name or not user.last_name:
+        return False
+    if not user.email or user.email.endswith("@autogen.local"):
+        return False
+    return True
+
 @bp.route('/test-db', methods=['GET'])
 def api_test_db():
     try:
@@ -209,8 +217,9 @@ def protected_route_example():
 @bp.route('/validate/<token>', methods=['GET'])
 def validate_account(token):
     """
-    GET /auth/validate/<token>
-    Valida una cuenta de usuario a través del token enviado por correo.
+    Valida el email usando el token enviado por correo.
+    - Marca email_verified=True
+    - (Opcional) is_active=True si existe ese campo
     """
     from app import db
     from app.models import User
@@ -224,36 +233,21 @@ def validate_account(token):
     if not user:
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
-    # ⚠️ Suponemos que agregaste la columna is_active en tu modelo User
-    if getattr(user, 'is_active', None) is False:
+    # Marcar como verificado
+    user.email_verified = True
+
+    # Si manejas activación de cuenta, la dejamos activada también
+    if hasattr(user, 'is_active') and (user.is_active is False):
         user.is_active = True
+
+    try:
         db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error validando cuenta {email}: {e}", exc_info=True)
+        return jsonify({"msg": "No se pudo validar la cuenta ahora"}), 500
 
-    return jsonify({"msg": "Cuenta validada exitosamente."}), 200
-
-@bp.route('/forgot-password', methods=['POST'])
-def forgot_password():
-    from app import db
-    from app.models import User
-    from app.routes.email_service import send_password_reset_email
-    from app.utils.tokens import generate_reset_token
-
-    data = request.get_json()
-    email = data.get('email')
-    if not email:
-        return jsonify({"msg": "Email requerido"}), 400
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({"msg": "No existe un usuario con ese email"}), 404
-
-    token, expiry = generate_reset_token()
-    user.reset_token = token
-    user.reset_token_expiry = expiry
-    db.session.commit()
-
-    send_password_reset_email(user, token)
-    return jsonify({"msg": "Se ha enviado un correo para restablecer la contraseña"}), 200
+    return jsonify({"msg": "Cuenta validada exitosamente.", "email_verified": True}), 200
 
 @bp.route('/reset-password/<token>', methods=['POST'])
 def reset_password(token):
@@ -395,7 +389,7 @@ def magic():
     """
     Valida el token mágico y emite un access_token normal.
     Query: /auth/magic?token=...
-    Respuesta: { "access_token": "...", "user_id": ..., "role": "..." }
+    Respuesta: { "access_token": "...", "user_id": ..., "role": "...", "profile_complete": bool }
     """
     token = (request.args.get("token") or "").strip()
     if not token:
@@ -415,7 +409,45 @@ def magic():
     return jsonify({
         "access_token": access_token,
         "user_id": user.user_id,
-        "role": user.role
+        "role": user.role,
+        "profile_complete": _profile_complete(user)  # <-- NUEVO
     }), 200
 
 
+@bp.route('/email/resend-verification', methods=['POST'], endpoint='email_resend_verification')
+@jwt_required()
+def resend_email_verification():
+    """
+    Reenvía el email de verificación al usuario autenticado.
+    Condiciones:
+      - 404 si el usuario no existe
+      - 400 si el email ya está verificado
+      - 400 si el email es autogenerado (@autogen.local) y pedimos que lo cambie primero
+    """
+    try:
+        user_id = int(get_jwt_identity())
+    except (TypeError, ValueError):
+        return jsonify({"msg": "Identidad del token inválida"}), 422
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"msg": "Usuario no encontrado"}), 404
+
+    if user.email_verified:
+        return jsonify({"msg": "El correo ya está verificado"}), 400
+
+    if not user.email:
+        return jsonify({"msg": "No hay correo en tu perfil"}), 400
+
+    # Opcional: bloqueamos si es un email autogenerado
+    if user.email.endswith("@autogen.local"):
+        return jsonify({"msg": "Cambia tu correo por uno real antes de reenviar la verificación"}), 400
+
+    try:
+        token = generate_validation_token(user.email)
+        send_account_validation_email(user, token)
+    except Exception as e:
+        current_app.logger.error(f"No se pudo reenviar verificación: {e}", exc_info=True)
+        return jsonify({"msg": "No se pudo reenviar la verificación ahora"}), 500
+
+    return jsonify({"msg": "Te hemos enviado un email para verificar tu correo"}), 200

@@ -1,52 +1,28 @@
 // frontend/src/services/apiClient.js
+const BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5001/api';
 
-// --- FORZAMOS LA URL CORRECTA PARA DESCARTAR PROBLEMAS DE .ENV ---
-const BASE_URL = 'http://localhost:5001/api';
-
-console.log("API Base URL forzada:", BASE_URL); // Dejamos el log para confirmar
-
-/**
- * Cliente de API centralizado que adjunta automáticamente el token JWT.
- * @param {string} endpoint - El endpoint a llamar (ej: '/provider/profile').
- * @param {string} method - El método HTTP (ej: 'GET', 'POST', 'PUT').
- * @param {object} [body=null] - El cuerpo de la petición para POST o PUT.
- * @returns {Promise<any>} Los datos de la respuesta en formato JSON.
- */
 export async function apiClient(endpoint, method = 'GET', body = null) {
-    const token = localStorage.getItem('accessToken');
-    
-    const headers = {
-        'Content-Type': 'application/json',
-    };
+  const token = localStorage.getItem('accessToken');
 
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
 
-    const config = {
-        method: method,
-        headers: headers,
-    };
+  const finalEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const res = await fetch(`${BASE_URL}${finalEndpoint}`, {
+    method,
+    headers,
+    body: method !== 'GET' && body ? JSON.stringify(body) : undefined,
+  });
 
-    if (body) {
-        config.body = JSON.stringify(body);
-    }
-    
-    try {
-        // --- LÍNEA MODIFICADA ---
-        // Nos aseguramos de que el endpoint empiece con una barra para una unión correcta.
-        const finalEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-        
-        const response = await fetch(`${BASE_URL}${finalEndpoint}`, config);
-        const data = await response.json();
+  // Algunas rutas pueden devolver 204 o no-JSON
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+  const data = isJson ? await res.json().catch(() => null) : null;
 
-        if (!response.ok) {
-            throw new Error(data.msg || `Error ${response.status} en la petición a ${endpoint}`);
-        }
-        return data;
-
-    } catch (error) {
-        console.error('Error en apiClient:', error);
-        throw error;
-    }
+  if (!res.ok) {
+    const msg = data?.msg || `HTTP ${res.status} ${res.statusText}`;
+    const err = new Error(msg);
+    err.response = { status: res.status, data };
+    throw err;
+  }
+  return data;
 }

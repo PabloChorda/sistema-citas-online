@@ -87,27 +87,30 @@ export function initWhatsappMagicLink(phoneNumber) {
 
 /**
  * Canjea un token mágico y crea sesión local.
- * Guarda accessToken en localStorage y devuelve user básico.
+ * Guarda accessToken en localStorage y devuelve datos básicos del usuario.
  * @param {string} token
- * @returns {Promise<{ user_id: number, role: string, access_token: string }>}
+ * @returns {Promise<{ user_id: number, role: string, access_token: string, profile_complete: boolean }>}
  */
 export async function redeemMagicToken(token) {
-  // En tu apiClient, los params de GET van en la URL
   const res = await apiClient(
     `${AUTH_ENDPOINT_PREFIX}/magic?token=${encodeURIComponent(token)}`,
     'GET'
   );
 
-  const { access_token, user_id, role } = res || {};
+  const { access_token, user_id, role, profile_complete } = res || {};
   if (access_token) {
     try {
       localStorage.setItem('accessToken', access_token);
       localStorage.setItem('authUser', JSON.stringify({ user_id, role }));
-      localStorage.setItem('userRole', role); 
-    } catch (_) {
-      // evitar romper si storage no está disponible
+      localStorage.setItem('userRole', role);
+    } catch {
+      // Ignorar errores de storage (modo incógnito, etc.)
     }
   }
 
-  return { user_id, role, access_token };
+  return { user_id, role, access_token, profile_complete: !!profile_complete };
+}
+
+export function resendEmailVerification() {
+  return apiClient('/auth/email/resend-verification', 'POST');
 }

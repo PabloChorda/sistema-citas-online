@@ -20,10 +20,15 @@ export default function Magic() {
 
     (async () => {
       try {
-        await redeemMagicToken(token);
+        // ⬇️ ahora leemos profile_complete del backend
+        const { profile_complete } = await redeemMagicToken(token);
         setStatus("ok");
+
+        // Si el perfil está incompleto, forzamos completar perfil primero
+        const target = profile_complete ? next : "/dashboard/client/profile";
+
         // redirige tras 500ms para que el usuario vea el estado un instante
-        setTimeout(() => navigate(next, { replace: true }), 500);
+        setTimeout(() => navigate(target, { replace: true }), 500);
       } catch (err) {
         const msg = err?.response?.data?.msg || "Enlace inválido o caducado";
         toast.error(msg);
