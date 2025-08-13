@@ -14,9 +14,21 @@ from app.models import User, Provider
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from flask_cors import cross_origin
+import os
+from urllib.parse import urlencode
+from app.services.magic_links import create_magic_link_for_phone, redeem_magic_token
+
 
 
 bp = Blueprint('auth', __name__)
+
+def _profile_complete(user):
+    # Consideramos incompleto si falta nombre/apellidos o si el email es autogenerado
+    if not user.first_name or not user.last_name:
+        return False
+    if not user.email or user.email.endswith("@autogen.local"):
+        return False
+    return True
 
 @bp.route('/test-db', methods=['GET'])
 def api_test_db():
@@ -205,8 +217,9 @@ def protected_route_example():
 @bp.route('/validate/<token>', methods=['GET'])
 def validate_account(token):
     """
-    GET /auth/validate/<token>
-    Valida una cuenta de usuario a través del token enviado por correo.
+    Valida el email usando el token enviado por correo.
+    - Marca email_verified=True
+    - (Opcional) is_active=True si existe ese campo
     """
     from app import db
     from app.models import User
@@ -220,36 +233,21 @@ def validate_account(token):
     if not user:
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
-    # ⚠️ Suponemos que agregaste la columna is_active en tu modelo User
-    if getattr(user, 'is_active', None) is False:
+    # Marcar como verificado
+    user.email_verified = True
+
+    # Si manejas activación de cuenta, la dejamos activada también
+    if hasattr(user, 'is_active') and (user.is_active is False):
         user.is_active = True
+
+    try:
         db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error validando cuenta {email}: {e}", exc_info=True)
+        return jsonify({"msg": "No se pudo validar la cuenta ahora"}), 500
 
-    return jsonify({"msg": "Cuenta validada exitosamente."}), 200
-
-@bp.route('/forgot-password', methods=['POST'])
-def forgot_password():
-    from app import db
-    from app.models import User
-    from app.routes.email_service import send_password_reset_email
-    from app.utils.tokens import generate_reset_token
-
-    data = request.get_json()
-    email = data.get('email')
-    if not email:
-        return jsonify({"msg": "Email requerido"}), 400
-
-    user = User.query.filter_by(email=email).first()
-    if not user:
-        return jsonify({"msg": "No existe un usuario con ese email"}), 404
-
-    token, expiry = generate_reset_token()
-    user.reset_token = token
-    user.reset_token_expiry = expiry
-    db.session.commit()
-
-    send_password_reset_email(user, token)
-    return jsonify({"msg": "Se ha enviado un correo para restablecer la contraseña"}), 200
+    return jsonify({"msg": "Cuenta validada exitosamente.", "email_verified": True}), 200
 
 @bp.route('/reset-password/<token>', methods=['POST'])
 def reset_password(token):
@@ -336,5 +334,120 @@ def google_oauth_login():
         current_app.logger.error(f"Error en login social: {e}", exc_info=True)
         return jsonify({"msg": "Error en login social", "error": str(e)}), 500
 
+@bp.route('/whatsapp/init', methods=['POST'])
+@jwt_required()
+def whatsapp_init():
+    """
+    Crea un enlace mágico para que un cliente reserve desde WhatsApp.
+    Body: { "phone_number": "+34...", "next": "/booking/123?prefill=true" }  # 'next' opcional
+    Respuesta: { "url": "http://localhost:5173/magic?token=..." , "user_id": <id_cliente> }
+    """
+    # El caller debe estar autenticado y tener rol válido
+    current_user_id_str = get_jwt_identity()
+    try:
+        current_user_id = int(current_user_id_str)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "Identidad del token inválida"}), 422
+
+    caller = User.query.get(current_user_id)
+    if not caller:
+        return jsonify({"msg": "No autorizado"}), 401
+
+    if caller.role not in ("provider", "staff", "admin"):
+        return jsonify({"msg": "No autorizado"}), 403
+
+    data = request.get_json(silent=True) or {}
+    phone = (data.get("phone_number") or "").strip()
+    next_path = (data.get("next") or "").strip()  # opcional
+
+    if not phone:
+        return jsonify({"msg": "phone_number requerido"}), 400
+
+    # Seguridad: evita open redirects. Solo permitimos rutas relativas comenzando por "/"
+    if next_path and not next_path.startswith("/"):
+        current_app.logger.warning(f"Ignorando 'next' no relativo: {next_path!r}")
+        next_path = ""
+
+    try:
+        token, target_user = create_magic_link_for_phone(phone, purpose="booking")
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error creando magic link: {e}", exc_info=True)
+        return jsonify({"msg": "Error interno creando enlace"}), 500
+
+    base = os.getenv("MAGIC_LINK_BASE_URL", "http://localhost:5173/magic")
+    params = {"token": token}
+    if next_path:
+        params["next"] = next_path
+
+    url = f"{base}?{urlencode(params)}"
+    return jsonify({"url": url, "user_id": target_user.user_id}), 201
+
+@bp.route('/magic', methods=['GET'])
+def magic():
+    """
+    Valida el token mágico y emite un access_token normal.
+    Query: /auth/magic?token=...
+    Respuesta: { "access_token": "...", "user_id": ..., "role": "...", "profile_complete": bool }
+    """
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return jsonify({"msg": "token requerido"}), 400
+
+    try:
+        user = redeem_magic_token(token)
+    except ValueError as e:
+        return jsonify({"msg": str(e)}), 400
+    except Exception as e:
+        current_app.logger.error(f"Error validando magic link: {e}", exc_info=True)
+        return jsonify({"msg": "Error interno validando enlace"}), 500
+
+    # Mantengo el mismo formato que tu /login (identity como str y sin refresh)
+    access_token = create_access_token(identity=str(user.user_id))
+
+    return jsonify({
+        "access_token": access_token,
+        "user_id": user.user_id,
+        "role": user.role,
+        "profile_complete": _profile_complete(user)  # <-- NUEVO
+    }), 200
 
 
+@bp.route('/email/resend-verification', methods=['POST'], endpoint='email_resend_verification')
+@jwt_required()
+def resend_email_verification():
+    """
+    Reenvía el email de verificación al usuario autenticado.
+    Condiciones:
+      - 404 si el usuario no existe
+      - 400 si el email ya está verificado
+      - 400 si el email es autogenerado (@autogen.local) y pedimos que lo cambie primero
+    """
+    try:
+        user_id = int(get_jwt_identity())
+    except (TypeError, ValueError):
+        return jsonify({"msg": "Identidad del token inválida"}), 422
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({"msg": "Usuario no encontrado"}), 404
+
+    if user.email_verified:
+        return jsonify({"msg": "El correo ya está verificado"}), 400
+
+    if not user.email:
+        return jsonify({"msg": "No hay correo en tu perfil"}), 400
+
+    # Opcional: bloqueamos si es un email autogenerado
+    if user.email.endswith("@autogen.local"):
+        return jsonify({"msg": "Cambia tu correo por uno real antes de reenviar la verificación"}), 400
+
+    try:
+        token = generate_validation_token(user.email)
+        send_account_validation_email(user, token)
+    except Exception as e:
+        current_app.logger.error(f"No se pudo reenviar verificación: {e}", exc_info=True)
+        return jsonify({"msg": "No se pudo reenviar la verificación ahora"}), 500
+
+    return jsonify({"msg": "Te hemos enviado un email para verificar tu correo"}), 200

@@ -11,18 +11,17 @@ const AUTH_ENDPOINT_PREFIX = '/auth';
 
 /**
  * Inicia sesión de un usuario.
- * @param {string} email 
- * @param {string} password 
+ * @param {string} email
+ * @param {string} password
  * @returns {Promise<object>}
  */
 export function loginUser(email, password) {
-  // Ya no necesitamos repetir method, headers, body, etc.
   return apiClient(`${AUTH_ENDPOINT_PREFIX}/login`, 'POST', { email, password });
 }
 
 /**
  * Registra un nuevo usuario de tipo 'client'.
- * @param {object} userData 
+ * @param {object} userData
  * @returns {Promise<object>}
  */
 export function registerUser(userData) {
@@ -31,7 +30,7 @@ export function registerUser(userData) {
 
 /**
  * Registra un nuevo usuario de tipo 'provider'.
- * @param {object} providerData 
+ * @param {object} providerData
  * @returns {Promise<object>}
  */
 export function registerProvider(providerData) {
@@ -40,7 +39,7 @@ export function registerProvider(providerData) {
 
 /**
  * Valida una cuenta a través de un token.
- * @param {string} token 
+ * @param {string} token
  * @returns {Promise<object>}
  */
 export function validateAccount(token) {
@@ -49,7 +48,7 @@ export function validateAccount(token) {
 
 /**
  * Solicita el restablecimiento de contraseña para un email.
- * @param {string} email 
+ * @param {string} email
  * @returns {Promise<object>}
  */
 export function requestPasswordReset(email) {
@@ -58,8 +57,8 @@ export function requestPasswordReset(email) {
 
 /**
  * Restablece la contraseña usando un token.
- * @param {string} token 
- * @param {string} password 
+ * @param {string} token
+ * @param {string} password
  * @returns {Promise<object>}
  */
 export function resetPasswordWithToken(token, password) {
@@ -73,4 +72,45 @@ export function resetPasswordWithToken(token, password) {
  */
 export function loginWithGoogle(token) {
   return apiClient(`${AUTH_ENDPOINT_PREFIX}/oauth/google`, 'POST', { token });
+}
+
+/**
+ * Genera una URL mágica de WhatsApp para un teléfono (requiere sesión de provider/staff/admin).
+ * @param {string} phoneNumber - Número en formato E.164 (p. ej. +34600111222)
+ * @returns {Promise<{url: string, user_id: number}>}
+ */
+export function initWhatsappMagicLink(phoneNumber) {
+  return apiClient(`${AUTH_ENDPOINT_PREFIX}/whatsapp/init`, 'POST', {
+    phone_number: phoneNumber,
+  });
+}
+
+/**
+ * Canjea un token mágico y crea sesión local.
+ * Guarda accessToken en localStorage y devuelve datos básicos del usuario.
+ * @param {string} token
+ * @returns {Promise<{ user_id: number, role: string, access_token: string, profile_complete: boolean }>}
+ */
+export async function redeemMagicToken(token) {
+  const res = await apiClient(
+    `${AUTH_ENDPOINT_PREFIX}/magic?token=${encodeURIComponent(token)}`,
+    'GET'
+  );
+
+  const { access_token, user_id, role, profile_complete } = res || {};
+  if (access_token) {
+    try {
+      localStorage.setItem('accessToken', access_token);
+      localStorage.setItem('authUser', JSON.stringify({ user_id, role }));
+      localStorage.setItem('userRole', role);
+    } catch {
+      // Ignorar errores de storage (modo incógnito, etc.)
+    }
+  }
+
+  return { user_id, role, access_token, profile_complete: !!profile_complete };
+}
+
+export function resendEmailVerification() {
+  return apiClient('/auth/email/resend-verification', 'POST');
 }

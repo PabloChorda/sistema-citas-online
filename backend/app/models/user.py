@@ -26,6 +26,8 @@ class User(BaseModel):
     last_login = db.Column(db.DateTime(timezone=True), nullable=True)
     reset_token = db.Column(db.String(255), nullable=True)
     reset_token_expiry = db.Column(db.DateTime(timezone=True), nullable=True)
+    phone_number = db.Column(db.String(50), unique=True, nullable=True)
+    phone_verified_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Relaciones
     provider_profile = db.relationship('Provider', back_populates='user', uselist=False, lazy='joined', cascade="all, delete-orphan")

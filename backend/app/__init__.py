@@ -40,18 +40,23 @@ def create_app(config_class_object):
         allow_headers=["Content-Type", "Authorization", "X-Requested-With"]
     )
 
-    # --- CAMBIO CRÍTICO: IMPORTACIONES DENTRO DE LA FUNCIÓN Y CONTEXTO ---
+    # --- IMPORTACIONES DENTRO DEL CONTEXTO DE LA APP ---
     with app.app_context():
-        # 1. Importar modelos primero
+        # 1) Importar modelos primero
         from . import models
         app.logger.info("Modelos importados.")
 
-        # 2. Importar y registrar blueprints DESPUÉS de que todo esté listo
+        # 2) Importar y registrar blueprints del API agrupado
         from app.routes import bp_api
         app.register_blueprint(bp_api, url_prefix='/api')
-        app.logger.info("Blueprint principal 'bp_api' registrado.")
+        app.logger.info("Blueprint principal 'bp_api' registrado en /api.")
 
-        # --- RUTAS DE UTILIDAD ---
+        # 3) Registrar el webhook de WhatsApp (fuera de /api)
+        from app.routes.whatsapp import bp as bp_whatsapp
+        app.register_blueprint(bp_whatsapp)  # url_prefix definido en el propio blueprint: /webhooks/whatsapp
+        app.logger.info("Webhook 'bp_whatsapp' registrado en /webhooks/whatsapp.")
+
+        # 4) Rutas de utilidad
         @app.route('/health') 
         def health_check():
             return jsonify({"status": "ok"}), 200
@@ -59,11 +64,11 @@ def create_app(config_class_object):
         @app.route('/')
         def root():
             return jsonify({"message": "API del Sistema de Citas Online"}), 200
-        
-        # ... (puedes añadir el log de listar rutas aquí si quieres)
+
+        # 5) Verificación de configuración crítica
+        verify_critical_config(app)
 
     app.logger.info("Aplicación Flask creada y configurada exitosamente.")
-    
     return app
 
 
