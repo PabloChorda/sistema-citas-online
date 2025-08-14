@@ -8,6 +8,8 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 import logging
 from flask_mail import Mail
+import threading
+import time
 
 # Inicializar extensiones globalmente SIN VINCULARLAS A LA APP
 db = SQLAlchemy()
@@ -19,19 +21,19 @@ def create_app(config_class_object):
     """
     Factory de la aplicación Flask.
     """
-    app = Flask(__name__) 
+    app = Flask(__name__)
     app.config.from_object(config_class_object)
 
     # Configurar logging
     configure_logging(app)
     app.logger.info(f"Aplicación Flask '{app.name}' inicializándose con config: {config_class_object.__name__}")
-    
+
     # Inicializar extensiones CON la app
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     mail.init_app(app)
-    
+
     CORS(
         app,
         resources={r"/api/*": {"origins": "http://localhost:5173"}},
@@ -57,7 +59,7 @@ def create_app(config_class_object):
         app.logger.info("Webhook 'bp_whatsapp' registrado en /webhooks/whatsapp.")
 
         # 4) Rutas de utilidad
-        @app.route('/health') 
+        @app.route('/health')
         def health_check():
             return jsonify({"status": "ok"}), 200
 
@@ -68,7 +70,24 @@ def create_app(config_class_object):
         # 5) Verificación de configuración crítica
         verify_critical_config(app)
 
+    # --- COMANDOS CLI (fuera del with, pero dentro de create_app) ---
+    from app.services.otp_service import cleanup_phone_otps
+
+    @app.cli.command("purge-otps")
+    def purge_otps_command():
+        """Borra OTPs usados o expirados antiguos (por defecto, >24h)."""
+        try:
+            keep_hours = int(os.getenv("OTP_PURGE_KEEP_HOURS", "24"))
+        except Exception:
+            keep_hours = 24
+        deleted = cleanup_phone_otps(keep_hours=keep_hours)
+        app.logger.info(f"[OTP] Purga completada. Registros borrados: {deleted}")
+        print(f"Purga completada. Registros borrados: {deleted}")
+
     app.logger.info("Aplicación Flask creada y configurada exitosamente.")
+        # Iniciar purgado automático si está habilitado por ENV
+    start_otp_purger_if_enabled(app)
+    
     return app
 
 
@@ -97,7 +116,7 @@ def configure_logging(app):
                     file_handler.setFormatter(logging.Formatter(
                         '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
                     ))
-                    file_handler.setLevel(logging.INFO) 
+                    file_handler.setLevel(logging.INFO)
                     app.logger.addHandler(file_handler)
 
         # Establecer nivel de log
@@ -124,3 +143,45 @@ def verify_critical_config(app):
 
     except Exception as e:
         app.logger.error(f"Error verificando configuración: {e}", exc_info=True)
+
+def _run_otp_purger(app, interval_min: int, keep_hours: int):
+    """Bucle que borra OTPs usados/expirados cada interval_min minutos."""
+    from app.services.otp_service import cleanup_phone_otps
+    with app.app_context():
+        app.logger.info(f"[OTP] Purger iniciado: cada {interval_min} min; manteniendo últimos {keep_hours} h")
+    while True:
+        try:
+            with app.app_context():
+                deleted = cleanup_phone_otps(keep_hours=keep_hours)
+                app.logger.info(f"[OTP] Purger ejecutado. Registros borrados: {deleted}")
+        except Exception as e:
+            with app.app_context():
+                app.logger.error(f"[OTP] Purger error: {e}", exc_info=True)
+        time.sleep(max(60, interval_min * 60))  # seguridad mínima de 60s
+
+def start_otp_purger_if_enabled(app):
+    """Arranca el purger si OTP_PURGE_INTERVAL_MIN > 0 y estamos en el proceso principal (evita doble hilo en debug)."""
+    try:
+        interval_min = int(os.getenv("OTP_PURGE_INTERVAL_MIN", "0"))
+        keep_hours = int(os.getenv("OTP_PURGE_KEEP_HOURS", "24"))
+    except Exception:
+        interval_min = 0
+        keep_hours = 24
+
+    # No arrancar si está deshabilitado
+    if interval_min <= 0:
+        app.logger.info("[OTP] Purger deshabilitado (OTP_PURGE_INTERVAL_MIN <= 0)")
+        return
+
+    # Evitar hilo duplicado con reloader de Werkzeug
+    if os.getenv("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+        t = threading.Thread(
+            target=_run_otp_purger,
+            args=(app, interval_min, keep_hours),
+            daemon=True,
+            name="otp-purger",
+        )
+        t.start()
+        app.logger.info("[OTP] Purger en segundo plano arrancado.")
+    else:
+        app.logger.info("[OTP] Purger no arrancado en subproceso del reloader.")

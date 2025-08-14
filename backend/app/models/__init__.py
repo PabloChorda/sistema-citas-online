@@ -13,7 +13,8 @@ from .establishment import Establishment, Staff
 from .service import Service, staff_services
 from .scheduling import AvailabilityRule, TimeBlock, Appointment,StaffAvailabilityRule
 from .tag import Tag, EstablishmentTag
-from .magic_link import MagicLink 
+from .magic_link import MagicLink
+from .phone_otp import PhoneOTP
 
 __all__ = [
     'BaseModel',
@@ -30,5 +31,7 @@ __all__ = [
     'Appointment',
     'Tag',
     'EstablishmentTag',
-      'MagicLink'
+    'MagicLink',
+    'PhoneOTP',
+    'StaffAvailabilityRule'
 ]

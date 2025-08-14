@@ -18,7 +18,6 @@ class User(BaseModel):
     social_id = db.Column(db.String(255), unique=True, nullable=True)
     first_name = db.Column(db.String(100), nullable=True)
     last_name = db.Column(db.String(100), nullable=True)
-    phone_number = db.Column(db.String(50), nullable=True)
     avatar_url = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(10), nullable=False, default='client', index=True)
     email_verified = db.Column(db.Boolean, default=False)

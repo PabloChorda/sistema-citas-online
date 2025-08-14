@@ -32,6 +32,7 @@ import ManageStaff from './pages/ManageStaff';
 import ManageStaffAvailability from './pages/ManageStaffAvailability';
 import ClientDashboard from './pages/ClientDashboard';
 import Magic from './pages/Magic';
+import LoginPhone from './pages/LoginPhone';
 
 
 
@@ -81,6 +82,7 @@ function App() {
 
         {/* --- GRUPO 2: RUTAS DE AUTENTICACIÓN --- */}
         <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
+        <Route path="/login-phone" element={!token ? <LoginPhone /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
         <Route path="/register/provider" element={!token ? <RegisterProvider /> : <Navigate to="/dashboard" />} />
         <Route path="/reset-password/:token" element={<NewPasswordForm />} />
