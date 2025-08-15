@@ -75,6 +75,7 @@ function App() {
         {/* --- GRUPO 1: RUTAS PÚBLICAS --- */}
         <Route element={<PublicLayout token={token} role={role} handleLogout={handleLogout} />}>
           <Route path="/" element={<BrowsePage />} />
+          <Route path="/login-phone" element={<LoginPhone />} /> 
           <Route path="/magic" element={<Magic />} /> 
           <Route path="/booking/:establishmentId" element={<BookingPage />} />
           <Route path="/booking/success" element={<BookingSuccessPage />} />
@@ -82,7 +83,6 @@ function App() {
 
         {/* --- GRUPO 2: RUTAS DE AUTENTICACIÓN --- */}
         <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
-        <Route path="/login-phone" element={!token ? <LoginPhone /> : <Navigate to="/dashboard" />} />
         <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
         <Route path="/register/provider" element={!token ? <RegisterProvider /> : <Navigate to="/dashboard" />} />
         <Route path="/reset-password/:token" element={<NewPasswordForm />} />

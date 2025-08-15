@@ -1,4 +1,5 @@
-import { useState } from 'react';
+// frontend/src/pages/LoginPhone.jsx
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { requestPhoneOtp, verifyPhoneOtp } from '../services/otpService';
@@ -16,7 +17,7 @@ export default function LoginPhone() {
   const next = searchParams.get('next') || '/';
 
   const onRequest = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (!phone.trim()) {
       toast.error('Introduce un teléfono válido');
       return;
@@ -24,13 +25,18 @@ export default function LoginPhone() {
     setLoading(true);
     try {
       const res = await requestPhoneOtp(phone.trim());
-      // Si OTP_DEBUG_RETURN_CODE=true, vendrá res.debug_code (útil en dev)
+      setStep('code');
       if (res?.debug_code) {
+        setCode(res.debug_code); // <-- autocompleta el input
         toast.success(`Código enviado. (DEV: ${res.debug_code})`);
+        // si viene verify=1 en la URL, auto-verificamos
+        if (searchParams.get('verify') === '1') {
+          await onVerify(); // llama sin evento
+          return;
+        }
       } else {
         toast.success('Código enviado por SMS/WhatsApp');
       }
-      setStep('code');
     } catch (err) {
       toast.error(err?.message || 'No se pudo enviar el código');
     } finally {
@@ -39,7 +45,7 @@ export default function LoginPhone() {
   };
 
   const onVerify = async (e) => {
-    e.preventDefault();
+    e?.preventDefault?.();
     if (!code.trim()) {
       toast.error('Introduce el código que has recibido');
       return;
@@ -48,9 +54,9 @@ export default function LoginPhone() {
     try {
       const { profile_complete } = await verifyPhoneOtp(phone.trim(), code.trim());
       toast.success('Sesión iniciada');
-      // Si el perfil no está completo, llévalo a /client/profile para rellenar
+      // IMPORTANTE: ruta correcta bajo el dashboard
       if (!profile_complete) {
-        navigate('/client/profile', { replace: true });
+        navigate('/dashboard/client/profile', { replace: true });
       } else {
         navigate(next, { replace: true });
       }
@@ -61,6 +67,20 @@ export default function LoginPhone() {
       setLoading(false);
     }
   };
+
+  // Prefill + auto-enviar OTP si viene de la invitación
+  useEffect(() => {
+    const p = searchParams.get('phone');
+    const auto = searchParams.get('send') === '1';
+    if (p) {
+      const decoded = (() => { try { return decodeURIComponent(p); } catch { return p; }})();
+      setPhone(decoded);
+      if (auto) {
+        onRequest(); // envía OTP automáticamente
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">

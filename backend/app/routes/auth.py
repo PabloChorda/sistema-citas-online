@@ -17,7 +17,6 @@ import os
 from urllib.parse import urlencode
 from app.services.magic_links import create_magic_link_for_phone, redeem_magic_token
 from app.services.otp_service import request_otp as otp_request, verify_otp as otp_verify
-from app.models.whatsapp_invite import WhatsAppInvite
 
 bp = Blueprint('auth', __name__)
 
@@ -351,48 +350,6 @@ def whatsapp_init():
 
     url = f"{base}?{urlencode(params)}"
     return jsonify({"url": url, "user_id": target_user.user_id}), 201
-
-# ⚠️ IMPORTANTE:
-# Esta ruta debe estar en el MISMO blueprint donde estén tus endpoints existentes
-# de /whatsapp/invite (POST/GET). Si esos están en otro blueprint (p.ej. bp_whatsapp),
-# mueve esta función a ese archivo para que el prefijo final coincida y no te de 404.
-@bp.get("/whatsapp/invite/<token>/consume")
-def whatsapp_invite_consume(token):
-    """
-    Consume una invitación: valida token, marca como usada y redirige al frontend
-    con el teléfono precargado en /login-phone.
-
-    Redirige a:
-      {FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?phone=+34...   (por defecto http://localhost:5173/login-phone)
-
-    Si la invitación es inválida/caducada/ya usada:
-      Redirige a {FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?error=invalid_invite
-    """
-    FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").rstrip("/")
-    LOGIN_PHONE_PATH  = os.getenv("LOGIN_PHONE_PATH", "/login-phone")
-
-    inv = WhatsAppInvite.query.filter_by(token=token).first()
-
-    now = datetime.now(timezone.utc)
-    if (not inv) or (inv.expires_at and now >= inv.expires_at) or (getattr(inv, "used", False) or inv.used_at):
-        target = f"{FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?{urlencode({'error':'invalid_invite'})}"
-        return redirect(target, code=302)
-
-    # marcar como usada
-    if hasattr(inv, "used"):
-        inv.used = True
-    inv.used_at = now
-
-    try:
-        db.session.commit()
-    except Exception as e:
-        current_app.logger.error(f"[invite.consume] Error al marcar usada: {e}", exc_info=True)
-        target = f"{FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?{urlencode({'error':'server_error'})}"
-        return redirect(target, code=302)
-
-    target = f"{FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?{urlencode({'phone': inv.phone_e164})}"
-    current_app.logger.info(f"[Invite] Consumida {token}, redirect -> {target}")
-    return redirect(target, code=302)
 
 @bp.route('/magic', methods=['GET'])
 def magic():

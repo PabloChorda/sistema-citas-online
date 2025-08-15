@@ -13,6 +13,7 @@ class WhatsAppInvite(db.Model):
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
     used_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), server_default=db.text("now()"))
+    next_path = db.Column(db.String(255), nullable=True)  # p.ej. "/booking/42"
 
     def is_expired(self):
         return datetime.now(timezone.utc) >= self.expires_at

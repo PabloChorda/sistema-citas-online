@@ -24,7 +24,7 @@ def create_invite():
     """
     Crea una invitación temporal para flujo WhatsApp ➜ login-phone.
     Body: {"phone_number":"+34...", "ttl_minutes": 60}
-    Respuesta 200: {"token":"...", "phone_e164":"+34...", "expires_at":"..."}
+    Respuesta 201: {"token":"...", "phone_e164":"+34...", "expires_at":"..."}
     """
     data = request.get_json(silent=True) or {}
     raw_phone = (data.get("phone_number") or "").strip()
@@ -48,7 +48,6 @@ def create_invite():
         expires_at=expires_at,
         used_at=None
     )
-    # si tu modelo tiene columna booleana 'used', la dejamos en False por defecto
     if hasattr(inv, "used"):
         inv.used = False
 
@@ -59,7 +58,7 @@ def create_invite():
         "token": tok,
         "phone_e164": phone,
         "expires_at": expires_at.isoformat(),
-    }), 200
+    }), 201 
 
 @bp.get("/invite/<token>")
 def get_invite(token):
@@ -83,8 +82,7 @@ def get_invite(token):
 def consume_invite(token):
     """
     Marca como usada y redirige al frontend /login-phone con el número precargado.
-    FRONTEND_BASE_URL (default http://localhost:5173)
-    LOGIN_PHONE_PATH  (default /login-phone)
+    Añadimos send=1 para que el frontend autoenvíe el OTP.
     """
     FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").rstrip("/")
     LOGIN_PHONE_PATH  = os.getenv("LOGIN_PHONE_PATH", "/login-phone")
@@ -96,7 +94,6 @@ def consume_invite(token):
         target = f"{FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?{urlencode({'error':'invalid_invite'})}"
         return redirect(target, code=302)
 
-    # marcar como usada
     if hasattr(inv, "used"):
         inv.used = True
     inv.used_at = now
@@ -108,6 +105,8 @@ def consume_invite(token):
         target = f"{FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?{urlencode({'error':'server_error'})}"
         return redirect(target, code=302)
 
-    target = f"{FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?{urlencode({'phone': inv.phone_e164})}"
+    # nota: añadimos send=1 para auto-solicitar OTP en el front
+    qs = urlencode({"phone": inv.phone_e164, "send": "1"})
+    target = f"{FRONTEND_BASE_URL}{LOGIN_PHONE_PATH}?{qs}"
     current_app.logger.info(f"[Invite] Consumida {token}, redirect -> {target}")
     return redirect(target, code=302)
