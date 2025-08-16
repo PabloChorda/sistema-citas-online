@@ -4,6 +4,11 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { getProviderDashboardSummary } from '../services/dashboardService';
 import { getProviderProfile } from '../services/providerService';
+import { createWhatsappInvite } from "../services/whatsappInviteService";
+import ShareInviteByWhatsApp from '../components/provider/ShareInviteByWhatsApp';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
+import toast from 'react-hot-toast';
 
 const StatCard = ({ title, value, linkTo, linkText }) => (
   <div className="bg-white rounded-lg shadow p-4 sm:p-6 w-full">
@@ -46,6 +51,12 @@ const ProviderDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // NUEVO estado para invitaciones
+  const [phone, setPhone] = useState('');
+  const [nextPath, setNextPath] = useState('/');
+  const [ttl, setTtl] = useState(60);
+  const [inviteUrl, setInviteUrl] = useState('');
+
   // Carga perfil (para elegir est_id por defecto) y resumen
   useEffect(() => {
     const bootstrap = async () => {
@@ -63,8 +74,8 @@ const ProviderDashboard = () => {
         setDefaultEstId(est?.id ?? null);
         setDefaultEstName(est?.nombre ?? '');
 
-        // 2) Resumen (si tu API soporta est_id, pásalo; si no, filtramos localmente)
-        const data = await getProviderDashboardSummary(/* { est_id: est?.id } */);
+        // 2) Resumen
+        const data = await getProviderDashboardSummary();
         setSummary(data);
       } catch (err) {
         console.error(err);
@@ -76,17 +87,35 @@ const ProviderDashboard = () => {
     bootstrap();
   }, []);
 
-  // Filtra las citas de hoy al establecimiento por defecto (si no viene filtrado del backend)
+  // Filtra las citas de hoy
   const todayAppointmentsFiltered = useMemo(() => {
     const list = summary?.today_appointments || [];
     if (!defaultEstId) return list;
     return list.filter((a) => {
-      // Intenta leer el establecimiento desde service.establishment_id o appointment.establishment_id
       const fromService = a?.service?.establishment_id;
       const direct = a?.establishment_id;
       return (fromService ?? direct) === defaultEstId;
     });
   }, [summary, defaultEstId]);
+
+  const handleCreateInvite = async (e) => {
+    e.preventDefault();
+    if (!phone.trim()) {
+      toast.error("Introduce un teléfono en formato E.164 (ej: +34600111222)");
+      return;
+    }
+    try {
+      const { inviteUrl } = await createWhatsappInvite(
+        phone.trim(),
+        Number(ttl) || 60,
+        nextPath || "/"
+      );
+      setInviteUrl(inviteUrl);
+      toast.success("Invitación creada");
+    } catch (err) {
+      toast.error(err.message || "Error creando invitación");
+    }
+  };
 
   if (loading) {
     return (
@@ -145,7 +174,7 @@ const ProviderDashboard = () => {
       </section>
 
       {summary?.latest_booking && (
-        <section className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+        <section className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-8">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Última Reserva Recibida</h2>
           <p className="text-sm">
             <strong>{summary.latest_booking.service?.nombre}</strong> para{' '}
@@ -157,6 +186,55 @@ const ProviderDashboard = () => {
           </p>
         </section>
       )}
+
+      {/* Nueva sección: Invitaciones por WhatsApp */}
+      <section className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Invitar por WhatsApp</h2>
+        <form onSubmit={handleCreateInvite} className="grid gap-3 md:grid-cols-3 items-end">
+          <label className="text-sm">
+            <span className="block mb-1">Teléfono (E.164)</span>
+            <Input
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+34600111222"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="block mb-1">Ruta siguiente (next)</span>
+            <Input
+              value={nextPath}
+              onChange={(e) => setNextPath(e.target.value)}
+              placeholder="/booking/123"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="block mb-1">TTL (minutos)</span>
+            <Input
+              type="number"
+              min={1}
+              value={ttl}
+              onChange={(e) => setTtl(e.target.value)}
+              placeholder="60"
+            />
+          </label>
+
+          <div className="md:col-span-3">
+            <Button type="submit" variant="primary">Generar enlace</Button>
+          </div>
+        </form>
+
+        {inviteUrl && (
+          <div className="mt-4 space-y-2">
+            <p className="text-sm break-all">
+              Enlace generado:{" "}
+              <a className="text-indigo-600 underline" href={inviteUrl} target="_blank" rel="noreferrer">
+                {inviteUrl}
+              </a>
+            </p>
+            <ShareInviteByWhatsApp inviteUrl={inviteUrl} />
+          </div>
+        )}
+      </section>
     </div>
   );
 };
