@@ -1,12 +1,8 @@
-// frontend/src/App.jsx
-
 import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import PublicLayout from './layouts/PublicLayout';
 import { Toaster } from 'react-hot-toast';
 
-
-// Layouts y Páginas
 import BrowsePage from './pages/BrowsePage';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
 import Login from './pages/Login';
@@ -33,9 +29,7 @@ import ManageStaffAvailability from './pages/ManageStaffAvailability';
 import ClientDashboard from './pages/ClientDashboard';
 import Magic from './pages/Magic';
 import LoginPhone from './pages/LoginPhone';
-
-
-
+import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('accessToken'));
@@ -64,19 +58,15 @@ function App() {
     setRole(null);
   };
 
-
   return (
     <Router>
-      <Toaster 
-        position="top-right"
-        toastOptions={{ duration: 5000 }}
-      />
+      <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
       <Routes>
         {/* --- GRUPO 1: RUTAS PÚBLICAS --- */}
         <Route element={<PublicLayout token={token} role={role} handleLogout={handleLogout} />}>
           <Route path="/" element={<BrowsePage />} />
-          <Route path="/login-phone" element={<LoginPhone />} /> 
-          <Route path="/magic" element={<Magic />} /> 
+          <Route path="/login-phone" element={<LoginPhone />} />
+          <Route path="/magic" element={<Magic />} />
           <Route path="/booking/:establishmentId" element={<BookingPage />} />
           <Route path="/booking/success" element={<BookingSuccessPage />} />
         </Route>
@@ -92,18 +82,13 @@ function App() {
         <Route element={<ProtectedRoute token={token} />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
           <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
-            
-            {/* --- 2. RUTA ÍNDICE AHORA ES CONDICIONAL --- */}
-            <Route 
-              index 
-              element={
-                role === 'provider' 
-                  ? <ProviderDashboard />    // <-- Si es proveedor, muestra su dashboard
-                  : <ClientDashboard />      // <-- Si es cliente, muestra el nuevo
-              } 
+            {/* índice condicional */}
+            <Route
+              index
+              element={role === 'provider' ? <ProviderDashboard /> : <ClientDashboard />}
             />
-            
-            {/* GRUPO DE RUTAS PARA PROVEEDOR */}
+
+            {/* PROVEEDOR */}
             {role === 'provider' && (
               <Route path="provider">
                 <Route path="profile" element={<ProviderProfile />} />
@@ -115,21 +100,23 @@ function App() {
                 <Route path="appointments" element={<ProviderAppointments />} />
                 <Route path="staff" element={<ManageStaff />} />
                 <Route path="staff/availability" element={<ManageStaffAvailability />} />
+                {/* NUEVA RUTA: QR/Enlace universal WhatsApp */}
+                <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
               </Route>
             )}
 
-            {/* GRUPO DE RUTAS PARA CLIENTE */}
+            {/* CLIENTE */}
             {role === 'client' && (
               <Route path="client">
                 <Route path="profile" element={<ClientProfile />} />
                 <Route path="appointments" element={<ClientAppointments />} />
               </Route>
             )}
-            
+
             <Route path="*" element={<NotFoundDashboard />} />
           </Route>
         </Route>
-        
+
         {/* RUTA COMODÍN FINAL */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
@@ -137,26 +124,21 @@ function App() {
   );
 }
 
-// --- 3. ELIMINAMOS WelcomeDashboard PORQUE YA NO SE USA DIRECTAMENTE AQUÍ ---
-// Lo hemos reemplazado por ClientDashboard para los clientes.
-// Si un rol 'admin' necesitara una bienvenida genérica en el futuro,
-// podríamos mover este componente a su propio archivo.
-
 const NotFoundDashboard = () => (
-    <div className="page-wrapper" style={{ textAlign: 'center', paddingTop: '5rem' }}>
-        <header className="page-header">
-            <h1>404 - No Encontrado</h1>
-            <p>La página que buscas no existe dentro del panel de control.</p>
-        </header>
-    </div>
+  <div className="page-wrapper" style={{ textAlign: 'center', paddingTop: '5rem' }}>
+    <header className="page-header">
+      <h1>404 - No Encontrado</h1>
+      <p>La página que buscas no existe dentro del panel de control.</p>
+    </header>
+  </div>
 );
 
 const NotFoundPage = () => (
-    <div style={{ textAlign: 'center', paddingTop: '5rem', color: '#333' }}>
-        <h1>404 - Página No Encontrada</h1>
-        <p>Lo sentimos, la página que estás buscando no existe.</p>
-        <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Volver a la página de inicio</Link>
-    </div>
+  <div style={{ textAlign: 'center', paddingTop: '5rem', color: '#333' }}>
+    <h1>404 - Página No Encontrada</h1>
+    <p>Lo sentimos, la página que estás buscando no existe.</p>
+    <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Volver a la página de inicio</Link>
+  </div>
 );
 
 export default App;
