@@ -28,6 +28,14 @@ services:
     depends_on:
       - db_citas
 
+  # Nuevo: Redis para rate limiting (almacen compartido)
+  redis:
+    image: redis:7-alpine
+    container_name: redis_rate
+    restart: always
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # No exponemos puerto; solo accesible dentro de la red de Compose
+
   backend:
     build:
       context: ./backend
@@ -39,14 +47,16 @@ services:
     ports:
       - "5001:5000"
     env_file:
-      - ./backend/.env 
+      - ./backend/.env
     environment:
       FLASK_APP: run.py
       # Solo sobrescribimos las variables que DEBEN ser diferentes en Docker
       DB_HOST: db_citas
-      # Eliminamos las duplicadas que ya están en .env para evitar conflictos
+      # Para Flask-Limiter con Redis:
+      RATELIMIT_STORAGE_URI: redis://redis:6379/0
     depends_on:
       - db_citas
+      - redis
 
   frontend:
     build:
@@ -61,11 +71,12 @@ services:
       - backend
 
   mailhog:
-      image: mailhog/mailhog
-      container_name: 'mailhog'
-      ports:
-        - "1025:1025"
-        - "8025:8025"
+    image: mailhog/mailhog
+    container_name: mailhog
+    restart: always
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
 volumes:
   postgres_citas_data:

@@ -15,6 +15,8 @@ from .scheduling import AvailabilityRule, TimeBlock, Appointment,StaffAvailabili
 from .tag import Tag, EstablishmentTag
 from .magic_link import MagicLink
 from .phone_otp import PhoneOTP
+from .whatsapp_invite import WhatsAppInvite
+from .webhook_event import WebhookEvent
 
 __all__ = [
     'BaseModel',
@@ -34,4 +36,6 @@ __all__ = [
     'MagicLink',
     'PhoneOTP',
     'StaffAvailabilityRule'
+    'WhatsAppInvite', 
+    'WebhookEvent'
 ]

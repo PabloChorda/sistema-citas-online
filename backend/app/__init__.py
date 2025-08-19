@@ -1,7 +1,7 @@
 # backend/app/__init__.py
 
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
@@ -11,11 +11,24 @@ from flask_mail import Mail
 import threading
 import time
 
+# ▶️ Rate limiting
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.middleware.proxy_fix import ProxyFix
+
 # Inicializar extensiones globalmente SIN VINCULARLAS A LA APP
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
 mail = Mail()
+
+# Limiter: usa Redis si está configurado, si no memoria (dev)
+limiter = Limiter(
+    key_func=get_remote_address,
+    storage_uri=os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
+    strategy="fixed-window",
+    headers_enabled=True,  # expone X-RateLimit-*
+)
 
 def create_app(config_class_object):
     """
@@ -24,15 +37,23 @@ def create_app(config_class_object):
     app = Flask(__name__)
     app.config.from_object(config_class_object)
 
+    # Cabeceras de rate-limit también desde config (opcional/extra)
+    app.config.setdefault("RATELIMIT_HEADERS_ENABLED", True)
+
     # Configurar logging
     configure_logging(app)
     app.logger.info(f"Aplicación Flask '{app.name}' inicializándose con config: {config_class_object.__name__}")
+
+    # Si hay proxy delante (Nginx/Cloudflare), usa ProxyFix para IP real
+    # En dev no molesta; en prod es imprescindible si hay proxy.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     # Inicializar extensiones CON la app
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
     mail.init_app(app)
+    limiter.init_app(app)  # ⬅️ Rate limiter
 
     CORS(
         app,
@@ -44,7 +65,7 @@ def create_app(config_class_object):
 
     # --- IMPORTACIONES DENTRO DEL CONTEXTO DE LA APP ---
     with app.app_context():
-        # 1) Importar modelos primero
+        # 1) Importar modelos primero (asegura que Alembic vea TODAS las tablas)
         from . import models
         app.logger.info("Modelos importados.")
 
@@ -70,7 +91,17 @@ def create_app(config_class_object):
         # 5) Verificación de configuración crítica
         verify_critical_config(app)
 
+    # --- HANDLER GLOBAL 429 (rate limit) ---
+    @app.errorhandler(429)
+    def ratelimit_handler(e):
+        return jsonify({
+            "msg": "Demasiadas solicitudes, intenta de nuevo más tarde.",
+            "error": "rate_limited",
+            "limit": getattr(e, "description", None)
+        }), 429
+
     # --- COMANDOS CLI (fuera del with, pero dentro de create_app) ---
+    # Comandos OTP ya existentes
     from app.services.otp_service import cleanup_phone_otps
 
     @app.cli.command("purge-otps")
@@ -84,10 +115,15 @@ def create_app(config_class_object):
         app.logger.info(f"[OTP] Purga completada. Registros borrados: {deleted}")
         print(f"Purga completada. Registros borrados: {deleted}")
 
+    # ✅ Import tardío: registra los comandos de purga de WhatsApp (invites + eventos)
+    from app.commands.purge import register_cli
+    register_cli(app)
+
     app.logger.info("Aplicación Flask creada y configurada exitosamente.")
-        # Iniciar purgado automático si está habilitado por ENV
+
+    # Iniciar purgado automático si está habilitado por ENV
     start_otp_purger_if_enabled(app)
-    
+
     return app
 
 
@@ -144,6 +180,7 @@ def verify_critical_config(app):
     except Exception as e:
         app.logger.error(f"Error verificando configuración: {e}", exc_info=True)
 
+
 def _run_otp_purger(app, interval_min: int, keep_hours: int):
     """Bucle que borra OTPs usados/expirados cada interval_min minutos."""
     from app.services.otp_service import cleanup_phone_otps
@@ -158,6 +195,7 @@ def _run_otp_purger(app, interval_min: int, keep_hours: int):
             with app.app_context():
                 app.logger.error(f"[OTP] Purger error: {e}", exc_info=True)
         time.sleep(max(60, interval_min * 60))  # seguridad mínima de 60s
+
 
 def start_otp_purger_if_enabled(app):
     """Arranca el purger si OTP_PURGE_INTERVAL_MIN > 0 y estamos en el proceso principal (evita doble hilo en debug)."""

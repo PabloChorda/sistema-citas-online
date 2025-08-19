@@ -1,5 +1,4 @@
 # backend/app/routes/whatsapp.py
-
 from flask import Blueprint, request, jsonify, current_app
 import os
 from urllib.parse import urlencode
@@ -9,6 +8,9 @@ from app import db
 from app.models.whatsapp_invite import WhatsAppInvite
 from app.services.whatsapp_api import send_text
 
+# ⬇️ Rate limiting
+from app import limiter
+
 bp = Blueprint("whatsapp_webhook", __name__, url_prefix="/webhooks/whatsapp")
 
 VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "verify-me")
@@ -17,7 +19,6 @@ BOOKING_KEYWORDS = [
     for w in os.getenv("BOOKING_KEYWORDS", "RESERVAR,RESERVA,CITA").split(",")
 ]
 DEFAULT_NEXT = os.getenv("WHATSAPP_DEFAULT_NEXT", "/")  # redirección tras canjear
-
 
 @bp.get("")
 def verify_webhook():
@@ -32,8 +33,19 @@ def verify_webhook():
         return challenge or "", 200
     return "forbidden", 403
 
+# 🔒 key-func por remitente (MSISDN) para rate limit fino
+def _key_from_msisdn():
+    payload = request.get_json(silent=True) or {}
+    try:
+        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+        from_number = (msg.get("from") or "").strip()
+        return f"wa_from:{from_number}" if from_number else request.remote_addr
+    except Exception:
+        return request.remote_addr
 
 @bp.post("")
+@limiter.limit("30 per minute")                 # por IP
+@limiter.limit("5 per minute", key_func=_key_from_msisdn)  # por emisor
 def receive_message():
     """
     Recibe mensajes entrantes. Si contienen palabras clave (RESERVAR/...), genera

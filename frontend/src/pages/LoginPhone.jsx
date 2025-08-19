@@ -1,5 +1,5 @@
 // frontend/src/pages/LoginPhone.jsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { requestPhoneOtp, verifyPhoneOtp } from '../services/otpService';
@@ -16,6 +16,10 @@ export default function LoginPhone() {
   const navigate = useNavigate();
 
   const next = searchParams.get('next') || '/';
+  const inviteError = searchParams.get('error'); // p.ej. invalid_invite
+  const autoSend = searchParams.get('send') === '1';
+
+  const lastPhone = useMemo(() => getLastPhone() || '', []);
 
   const onRequest = async (e) => {
     e?.preventDefault?.();
@@ -27,9 +31,9 @@ export default function LoginPhone() {
     setLoading(true);
     try {
       const res = await requestPhoneOtp(normalized);
+
       // Guarda el último teléfono usado para UX
       setLastPhone(normalized);
-
       setStep('code');
 
       if (res?.debug_code) {
@@ -86,22 +90,26 @@ export default function LoginPhone() {
   // Prefill desde URL (?phone= + opcional send=1) o desde memoria local si no hay ?phone=
   useEffect(() => {
     const p = searchParams.get('phone');
-    const auto = searchParams.get('send') === '1';
 
     if (p) {
-      const decoded = (() => { try { return decodeURIComponent(p); } catch { return p; }})();
+      const decoded = (() => {
+        try { return decodeURIComponent(p); } catch { return p; }
+      })();
       setPhone(decoded);
-      if (auto) {
+      if (autoSend) {
         // envía OTP automáticamente
         onRequest();
       }
-    } else {
+    } else if (lastPhone) {
       // Si no viene en la URL, intentamos recuperar el último teléfono recordado
-      const remembered = getLastPhone();
-      if (remembered) setPhone(remembered);
+      setPhone(lastPhone);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  const useLastPhone = () => {
+    if (lastPhone) setPhone(lastPhone);
+  };
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">
@@ -109,6 +117,13 @@ export default function LoginPhone() {
         <h1 className="text-xl font-semibold mb-4">
           {step === 'phone' ? 'Entrar con tu teléfono' : 'Introduce el código'}
         </h1>
+
+        {/* Aviso si la invitación está caducada o ya usada */}
+        {inviteError === 'invalid_invite' && (
+          <div className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
+            Tu enlace ha caducado o ya fue usado. Introduce tu teléfono para pedir un nuevo código.
+          </div>
+        )}
 
         {step === 'phone' && (
           <form onSubmit={onRequest} className="space-y-4">
@@ -121,6 +136,20 @@ export default function LoginPhone() {
                 placeholder="+34 600 000 000"
               />
             </label>
+
+            {/* Chip para reutilizar el último teléfono usado */}
+            {!!lastPhone && lastPhone !== phone && (
+              <div className="text-xs">
+                <button
+                  type="button"
+                  onClick={useLastPhone}
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2.5 py-1 hover:bg-gray-50"
+                >
+                  Usar {lastPhone} otra vez
+                </button>
+              </div>
+            )}
+
             <Button type="submit" variant="primary" disabled={loading}>
               {loading ? 'Enviando…' : 'Enviar código'}
             </Button>
