@@ -182,6 +182,7 @@ export default function ProviderDashboard() {
         <UniversalWhatsAppInvite
           businessPhoneE164={businessPhone}
           presetText="RESERVAR"
+          enableA4Actions
         />
       </section>
     </div>

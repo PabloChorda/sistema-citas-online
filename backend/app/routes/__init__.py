@@ -18,6 +18,7 @@ from .staff import staff_bp
 from .staff_availability import staff_availability_bp
 from .whatsapp_invite import bp as whatsapp_invite_bp
 from .whatsapp import bp as bp_whatsapp_webhook
+from .admin_metrics import bp as admin_metrics_bp
 
 
 # Registramos todos los blueprints
@@ -33,4 +34,5 @@ bp_api.register_blueprint(dashboard_bp, url_prefix='/provider')
 bp_api.register_blueprint(staff_bp)
 bp_api.register_blueprint(staff_availability_bp)
 bp_api.register_blueprint(whatsapp_invite_bp, url_prefix='/whatsapp')
-bp_api.register_blueprint(bp_whatsapp_webhook) 
+bp_api.register_blueprint(bp_whatsapp_webhook)
+bp_api.register_blueprint(admin_metrics_bp)

@@ -1,4 +1,3 @@
-# backend/app/routes/auth.py
 from flask import Blueprint, jsonify, request, current_app, redirect
 from flask_jwt_extended import (
     create_access_token,
@@ -18,6 +17,9 @@ from urllib.parse import urlencode
 from app.services.magic_links import create_magic_link_for_phone, redeem_magic_token
 from app.services.otp_service import request_otp as otp_request, verify_otp as otp_verify
 
+# ⬇️ Rate limiting
+from app import limiter
+
 bp = Blueprint('auth', __name__)
 
 def _profile_complete(user):
@@ -27,6 +29,12 @@ def _profile_complete(user):
     if not user.email or user.email.endswith("@autogen.local"):
         return False
     return True
+
+# 🔒 key-func para limitar por teléfono (body JSON)
+def _key_phone_from_body():
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("phone_number") or "").strip()
+    return f"phone:{raw}" if raw else request.remote_addr
 
 @bp.route('/test-db', methods=['GET'])
 def api_test_db():
@@ -410,6 +418,8 @@ def resend_email_verification():
     return jsonify({"msg": "Te hemos enviado un email para verificar tu correo"}), 200
 
 @bp.route('/phone/request-otp', methods=['POST'])
+@limiter.limit("10 per 10 minutes")  # por IP
+@limiter.limit("5 per 10 minutes", key_func=_key_phone_from_body)  # por teléfono
 def phone_request_otp():
     data = request.get_json(silent=True) or {}
     phone = (data.get("phone_number") or "").strip()

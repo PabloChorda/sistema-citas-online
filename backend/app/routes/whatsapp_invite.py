@@ -8,6 +8,9 @@ from app import db
 from app.models.whatsapp_invite import WhatsAppInvite
 from app.utils.phones import normalize_e164
 
+# ⬇️ Rate limiting
+from app import limiter
+
 # Este blueprint se monta bajo /api/whatsapp desde routes/__init__.py
 bp = Blueprint("whatsapp_invite_api", __name__)
 
@@ -31,7 +34,15 @@ def _sanitize_next(next_raw: str | None) -> str | None:
         return next_raw
     return None
 
+# 🔒 key-func por teléfono para rate limit
+def _key_phone_from_body():
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("phone_number") or "").strip()
+    return f"wa_invite:{raw}" if raw else request.remote_addr
+
 @bp.post("/invite")
+@limiter.limit("30 per 10 minutes")  # por IP
+@limiter.limit("5 per 10 minutes", key_func=_key_phone_from_body)  # por teléfono
 def create_invite():
     """
     Crea una invitación temporal para flujo WhatsApp ➜ login-phone.

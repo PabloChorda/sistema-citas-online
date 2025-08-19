@@ -270,3 +270,69 @@ a:hover { text-decoration: underline; }
   .main-content { padding: 1rem; }
   .form-grid { grid-template-columns: 1fr; }
 }
+
+/* =========================
+   PRINT A4 para WhatsApp QR
+========================= */
+
+/* Fuerza tamaño A4 y margen de impresora realista */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+/* Oculta elementos de UI al imprimir y estiliza la hoja */
+@media print {
+  /* Oculta navegación, botones, chrome de app y bloques marcados */
+  header, nav, footer, .no-print, .app-chrome, .page-header + .no-print { 
+    display: none !important; 
+  }
+
+  /* Contenedor A4 limpio */
+  .print-a4 {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: white !important;
+    page-break-after: avoid;
+    page-break-before: avoid;
+  }
+
+  /* Tipografías/tamaños para papel */
+  .print-title { 
+    font-size: 18pt; 
+    font-weight: 700; 
+    margin-bottom: 6mm; 
+  }
+  .print-subtitle { 
+    font-size: 12pt; 
+    margin-bottom: 8mm; 
+    color: #333; 
+  }
+
+  /* QR grande ~130mm para quedar nítido en la mayoría de impresoras */
+  .print-qr {
+    width: 130mm; 
+    height: 130mm;
+    margin: 0 auto 8mm auto;
+    display: block;
+  }
+
+  .print-instructions { font-size: 11pt; line-height: 1.35; }
+  .print-url { font-size: 10pt; word-break: break-all; color: #111; }
+}
+
+/* Ocultar por defecto y mostrar solo al imprimir */
+.print-a4,
+.only-print {
+  display: none;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  .only-print { display: block !important; }
+  .print-a4 { display: block !important; }
+}

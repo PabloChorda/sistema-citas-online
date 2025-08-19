@@ -1,3 +1,4 @@
+// frontend/src/components/provider/UniversalWhatsAppInvite.jsx
 import { useEffect, useMemo, useState } from "react";
 
 /**
@@ -28,10 +29,12 @@ function normalizeE164Loose(phoneRaw) {
  * Props:
  *  - businessPhoneE164: string (+34600111222) — si llega sin + lo normalizamos
  *  - presetText: string (por defecto "RESERVAR")
+ *  - enableA4Actions: boolean — si true, muestra botón "Descargar PNG (A4)"
  */
 export default function UniversalWhatsAppInvite({
   businessPhoneE164,
   presetText = "RESERVAR",
+  enableA4Actions = false,
 }) {
   // Decide el teléfono: prop > VITE_WHATSAPP_NUMBER > vacío
   const rawPhone = useMemo(() => {
@@ -96,6 +99,55 @@ export default function UniversalWhatsAppInvite({
     a.click();
   };
 
+  // Descargar PNG A4 dentro del widget
+  const handleDownloadA4Png = async () => {
+    if (!waLink) return;
+    try {
+      const mod = await import(/* @vite-ignore */ "qrcode");
+      const W = 2480, H = 3508;
+      const canvas = document.createElement("canvas");
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#FFF"; ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = "#111"; ctx.textAlign = "center";
+      ctx.font = "bold 96px Inter, system-ui, Arial";
+      ctx.fillText("Reserva por WhatsApp", W/2, 260);
+      ctx.font = "48px Inter, system-ui, Arial";
+      ctx.fillStyle = "#333";
+      ctx.fillText("Escanea este código con tu móvil", W/2, 360);
+
+      const qrSize = 2000;
+      const dataUrl = await mod.toDataURL(waLink, { width: qrSize, margin: 2 });
+      const img = new Image();
+      img.onload = () => {
+        const x = (W - qrSize)/2, y = 520;
+        ctx.drawImage(img, x, y, qrSize, qrSize);
+
+        ctx.fillStyle = "#333";
+        ctx.font = "44px Inter, system-ui, Arial";
+        let lineY = y + qrSize + 120;
+        [
+          "1) Abre la cámara o WhatsApp y escanea el código.",
+          `2) Se abrirá un chat con “${presetText}”. Envíalo.`,
+          "3) Recibirás un enlace para continuar y finalizar tu cita.",
+        ].forEach(t => { ctx.fillText(t, W/2, lineY); lineY += 70; });
+
+        ctx.fillStyle = "#111";
+        ctx.font = "bold 42px Inter, system-ui, Arial";
+        ctx.fillText("Si no funciona, entra en: https://tusitio.com/booking", W/2, lineY + 60);
+
+        const out = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = out; a.download = "qr-whatsapp-A4.png"; a.click();
+      };
+      img.src = dataUrl;
+    } catch (e) {
+      console.error(e);
+      alert("No se pudo generar el PNG A4. Revisa la consola.");
+    }
+  };
+
   return (
     <div className="flex flex-col md:flex-row gap-4 md:gap-6 items-start">
       {/* QR */}
@@ -158,16 +210,32 @@ export default function UniversalWhatsAppInvite({
           <button
             type="button"
             onClick={downloadQR}
-            disabled={!qrSrc}
+            disabled={!waLink || !qrSrc}
             className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold shadow-sm border transition sm:col-span-2
               ${
-                qrSrc
+                waLink && qrSrc
                   ? "bg-white text-gray-800 hover:bg-gray-50 border-gray-300"
                   : "bg-gray-200 text-gray-500 cursor-not-allowed border-gray-200"
               }`}
           >
             Descargar QR (PNG)
           </button>
+
+          {enableA4Actions && (
+            <button
+              type="button"
+              onClick={handleDownloadA4Png}
+              disabled={!waLink}
+              className={`inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-semibold shadow-sm border transition sm:col-span-2
+                ${
+                  waLink
+                    ? "bg-white text-gray-800 hover:bg-gray-50 border-gray-300"
+                    : "bg-gray-200 text-gray-500 cursor-not-allowed border-gray-200"
+                }`}
+            >
+              Descargar PNG (A4)
+            </button>
+          )}
         </div>
 
         {!phone && (
