@@ -1,15 +1,21 @@
 # backend/app/routes/whatsapp.py
 from flask import Blueprint, request, jsonify, current_app
 import os
+import hmac
+import hashlib
 from urllib.parse import urlencode
-from datetime import datetime, timedelta, timezone
 
-from app import db
+from sqlalchemy.exc import IntegrityError
+
+from app import db, limiter
 from app.models.whatsapp_invite import WhatsAppInvite
 from app.services.whatsapp_api import send_text
 
-# ⬇️ Rate limiting
-from app import limiter
+# Opcional: si ya tienes el modelo, esto funcionará.
+try:
+    from app.models.webhook_event import WebhookEvent
+except Exception:  # pragma: no cover
+    WebhookEvent = None  # fallback
 
 bp = Blueprint("whatsapp_webhook", __name__, url_prefix="/webhooks/whatsapp")
 
@@ -19,6 +25,50 @@ BOOKING_KEYWORDS = [
     for w in os.getenv("BOOKING_KEYWORDS", "RESERVAR,RESERVA,CITA").split(",")
 ]
 DEFAULT_NEXT = os.getenv("WHATSAPP_DEFAULT_NEXT", "/")  # redirección tras canjear
+
+# Soportamos ambos nombres de env para el secreto HMAC
+_APP_SECRET_RAW = os.getenv("WHATSAPP_APP_SECRET") or os.getenv("WHATSAPP_HMAC_SECRET", "")
+APP_SECRET = (_APP_SECRET_RAW or "").encode("utf-8")
+
+REQUIRE_VALID_SIGNATURE = (os.getenv("WHATSAPP_REQUIRE_VALID_SIGNATURE", "true").lower() == "true")
+
+
+def _signature_valid(req) -> bool:
+    """
+    Valida X-Hub-Signature-256 = 'sha256=<hexdigest>' con APP_SECRET.
+    """
+    header = (req.headers.get("X-Hub-Signature-256") or "").strip()
+    if not APP_SECRET:
+        return False
+    if not header.startswith("sha256="):
+        return False
+    sent_hex = header.split("=", 1)[1]
+    body = req.get_data(cache=True)  # bytes del raw payload
+    calc_hex = hmac.new(APP_SECRET, body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sent_hex, calc_hex)
+
+
+def _key_sender_msisdn():
+    """
+    Key-func para limitar por emisor (MSISDN) además del límite global por IP.
+    Si no podemos extraerlo, caemos al remote_addr.
+    """
+    try:
+        payload = request.get_json(silent=True) or {}
+        entries = payload.get("entry", []) or []
+        for entry in entries:
+            changes = entry.get("changes", []) or []
+            for change in changes:
+                value = change.get("value", {}) or {}
+                messages = value.get("messages", []) or []
+                if messages:
+                    frm = messages[0].get("from")
+                    if frm:
+                        return f"wa:{frm}"
+    except Exception:
+        pass
+    return request.remote_addr or "unknown"
+
 
 @bp.get("")
 def verify_webhook():
@@ -33,25 +83,41 @@ def verify_webhook():
         return challenge or "", 200
     return "forbidden", 403
 
-# 🔒 key-func por remitente (MSISDN) para rate limit fino
-def _key_from_msisdn():
-    payload = request.get_json(silent=True) or {}
-    try:
-        msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
-        from_number = (msg.get("from") or "").strip()
-        return f"wa_from:{from_number}" if from_number else request.remote_addr
-    except Exception:
-        return request.remote_addr
 
 @bp.post("")
-@limiter.limit("30 per minute")                 # por IP
-@limiter.limit("5 per minute", key_func=_key_from_msisdn)  # por emisor
+@limiter.limit("60 per minute")                              # límite global por IP (Meta)
+@limiter.limit("5 per minute", key_func=_key_sender_msisdn)  # extra por número emisor
 def receive_message():
     """
     Recibe mensajes entrantes. Si contienen palabras clave (RESERVAR/...), genera
     una invitación OTP y responde con un enlace de consumo.
     En dev o si ECHO_WEBHOOK_INVITE_URL=true, devuelve invite_url en la respuesta JSON.
     """
+    # 1) Validar firma
+    sig_ok = _signature_valid(request)
+    if REQUIRE_VALID_SIGNATURE and not sig_ok:
+        current_app.logger.warning("[WhatsApp] Firma inválida, rechazando payload.")
+
+        # Guardamos evento de firma inválida (no bloqueante)
+        try:
+            if WebhookEvent:
+                ev = WebhookEvent(
+                    event_type="webhook",
+                    message_id=None,
+                    from_msisdn=None,
+                    keyword_detected=False,
+                    invite_token=None,
+                    sent_ok=False,
+                    signature_valid=False,
+                )
+                db.session.add(ev)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        # Rechazamos para no aceptar cargas sin firma válida
+        return jsonify({"status": "invalid_signature"}), 403
+
     payload = request.get_json(silent=True) or {}
     try:
         entries = payload.get("entry", []) or []
@@ -62,7 +128,27 @@ def receive_message():
                 messages = value.get("messages", []) or []
 
                 for msg in messages:
-                    from_number = msg.get("from")  # MSISDN (a veces sin '+')
+                    message_id = msg.get("id")
+                    from_number = msg.get("from")  # MSISDN (sin '+')
+
+                    # --- Idempotencia atómica (insert-first guard) ---
+                    if WebhookEvent and message_id:
+                        try:
+                            ev_guard = WebhookEvent(
+                                event_type="guard",
+                                message_id=message_id,
+                                from_msisdn=from_number,
+                                keyword_detected=False,
+                                invite_token=None,
+                                sent_ok=False,
+                                signature_valid=sig_ok,
+                            )
+                            db.session.add(ev_guard)
+                            db.session.commit()
+                        except IntegrityError:
+                            db.session.rollback()
+                            current_app.logger.info(f"[WhatsApp] Duplicado message_id={message_id}, ignorando.")
+                            continue  # ya procesado antes
 
                     # "text" puede venir como objeto {"body": "..."} o no venir
                     text_field = msg.get("text")
@@ -73,22 +159,36 @@ def receive_message():
                     else:
                         text_body = ""
                     text = (text_body or "").strip()
+                    keyword = any(k in text.lower() for k in BOOKING_KEYWORDS)
 
-                    if not from_number:
-                        continue
+                    # Normalizar número a formato +E.164 (simple) para la invite
+                    phone_e164 = None
+                    if from_number:
+                        phone_e164 = "+" + str(from_number).lstrip("+")
 
-                    # Palabras clave (config BOOKING_KEYWORDS)
-                    if not any(k in text.lower() for k in BOOKING_KEYWORDS):
+                    invite_url = None
+                    sent_ok = False
+
+                    if not keyword:
                         current_app.logger.info(
                             f"[WhatsApp] Mensaje sin keyword: from={from_number} text={text!r}"
                         )
+                        # Actualiza el guard como mensaje normal sin keyword
+                        try:
+                            if WebhookEvent and message_id:
+                                WebhookEvent.query.filter_by(message_id=message_id).update({
+                                    "event_type": "message",
+                                    "keyword_detected": False,
+                                    "invite_token": None,
+                                    "sent_ok": False,
+                                })
+                                db.session.commit()
+                        except Exception:
+                            db.session.rollback()
                         continue
 
+                    # Crear invitación
                     try:
-                        # Normalizar número a formato +E.164
-                        phone_e164 = "+" + from_number.lstrip("+")
-
-                        # Crear invitación OTP usando el método estático
                         ttl = int(os.getenv("WHATSAPP_INVITE_TTL_MINUTES", "60"))
                         inv = WhatsAppInvite.generate(phone_e164, ttl)
 
@@ -96,7 +196,6 @@ def receive_message():
                         base_url = request.url_root.rstrip("/")
                         invite_url = f"{base_url}/api/whatsapp/invite/{inv.token}/consume"
 
-                        # next opcional
                         params = {"send": "1"}
                         if DEFAULT_NEXT:
                             params["next"] = DEFAULT_NEXT
@@ -107,45 +206,75 @@ def receive_message():
                             f"[WhatsApp] Invite creada token={inv.token} phone={phone_e164} url={invite_url}"
                         )
 
-                        # Intentar enviar por WhatsApp (si falla, no bloquea el eco en dev)
+                        # Intentar enviar por WhatsApp (to sin '+')
                         try:
                             reply = (
                                 "¡Listo! Toca este enlace para continuar tu reserva con tu teléfono precargado:\n"
                                 f"{invite_url}\n\n"
                                 "Si caduca o ya se usó, escribe RESERVAR y te mando otro."
                             )
-                            send_text(inv.phone_e164, reply)
+                            to_msisdn = str(from_number).lstrip("+")
+                            send_text(to_msisdn, reply)
+                            sent_ok = True
                         except Exception as se:
+                            sent_ok = False
                             current_app.logger.warning(
                                 f"[WhatsApp] Falla send_text: {se}", exc_info=True
                             )
+
+                        # Actualiza el guard con el resultado real
+                        try:
+                            if WebhookEvent and message_id:
+                                WebhookEvent.query.filter_by(message_id=message_id).update({
+                                    "event_type": "message",
+                                    "keyword_detected": True,
+                                    "invite_token": inv.token,
+                                    "sent_ok": sent_ok,
+                                })
+                                db.session.commit()
+                        except Exception:
+                            db.session.rollback()
 
                         # En debug o si ECHO_WEBHOOK_INVITE_URL=true, devolvemos el enlace
                         if current_app.debug or os.getenv("ECHO_WEBHOOK_INVITE_URL", "false").lower() == "true":
                             return jsonify({"status": "ok", "invite_url": invite_url}), 200
 
-                        # Sin eco: respondemos 200 simple tras procesar el primer mensaje válido
-                        return jsonify({"status": "ok"}), 200
+                        # seguimos para procesar otros mensajes del mismo payload
+                        continue
 
                     except Exception as e:
                         current_app.logger.error(
                             f"[WhatsApp] Error generando invitación: {e}", exc_info=True
                         )
-                        # Intentar informar al usuario por WhatsApp, pero sin bloquear el 200 al webhook
+
+                        # Intentar informar al usuario por WhatsApp (no bloqueante)
                         try:
-                            send_text(
-                                "+" + from_number.lstrip("+"),
-                                "Ahora mismo no puedo generar el enlace. Inténtalo en unos minutos.",
-                            )
+                            if from_number:
+                                to_msisdn = str(from_number).lstrip("+")
+                                send_text(
+                                    to_msisdn,
+                                    "Ahora mismo no puedo generar el enlace. Inténtalo en unos minutos.",
+                                )
                         except Exception:
                             pass
-                        # devolvemos ok para que Meta no reintente
-                        return jsonify({"status": "ok"}), 200
 
-        # Si no hubo mensajes o ninguno matcheó, devolver 200 igualmente
+                        # Marca el guard como error
+                        try:
+                            if WebhookEvent and message_id:
+                                WebhookEvent.query.filter_by(message_id=message_id).update({
+                                    "event_type": "error",
+                                    "keyword_detected": keyword,
+                                    "invite_token": None,
+                                    "sent_ok": False,
+                                })
+                                db.session.commit()
+                        except Exception:
+                            db.session.rollback()
+                        continue
+
+        # Siempre 200 para cerrar bien el ciclo de entrega de Meta
         return jsonify({"status": "ok"}), 200
 
     except Exception as e:
         current_app.logger.error(f"[WhatsApp] Webhook parse error: {e}", exc_info=True)
-        # WhatsApp Cloud API no quiere reintentos infinitos: mejor 200
         return jsonify({"status": "ok"}), 200
