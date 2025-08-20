@@ -25,9 +25,9 @@ mail = Mail()
 # Limiter: usa Redis si está configurado, si no memoria (dev)
 limiter = Limiter(
     key_func=get_remote_address,
-    storage_uri=os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
-    strategy="fixed-window",
-    headers_enabled=True,  # expone X-RateLimit-*
+    storage_uri=os.getenv("LIMITER_STORAGE_URI", "memory://"),
+    strategy="moving-window",
+    headers_enabled=True,
 )
 
 def create_app(config_class_object):

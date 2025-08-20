@@ -53,7 +53,7 @@ services:
       # Solo sobrescribimos las variables que DEBEN ser diferentes en Docker
       DB_HOST: db_citas
       # Para Flask-Limiter con Redis:
-      RATELIMIT_STORAGE_URI: redis://redis:6379/0
+      LIMITER_STORAGE_URI: redis://redis:6379/0
     depends_on:
       - db_citas
       - redis

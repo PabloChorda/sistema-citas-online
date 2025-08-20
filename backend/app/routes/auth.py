@@ -1,3 +1,4 @@
+# backend/app/routes/auth.py
 from flask import Blueprint, jsonify, request, current_app, redirect
 from flask_jwt_extended import (
     create_access_token,
@@ -435,6 +436,9 @@ def phone_request_otp():
         return jsonify({"msg": "No se pudo enviar el código"}), 500
 
 @bp.route('/phone/verify-otp', methods=['POST'])
+@limiter.limit("30 per 10 minutes")                               # respaldo por IP
+@limiter.limit("8 per 10 minutes", key_func=_key_phone_from_body)  # por teléfono
+@limiter.limit("3 per 30 seconds", key_func=_key_phone_from_body)  # anti-burst
 def phone_verify_otp():
     data = request.get_json(silent=True) or {}
     phone = (data.get("phone_number") or "").strip()
