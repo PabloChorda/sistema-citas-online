@@ -109,13 +109,14 @@ def receive_message():
                     invite_token=None,
                     sent_ok=False,
                     signature_valid=False,
+                    error_reason="invalid_signature",
                 )
                 db.session.add(ev)
                 db.session.commit()
         except Exception:
             db.session.rollback()
 
-        # Rechazamos para no aceptar cargas sin firma válida
+        # Rechazamos para no aceptar cargas sin firma válida (puedes devolver 200 si prefieres evitar reintentos)
         return jsonify({"status": "invalid_signature"}), 403
 
     payload = request.get_json(silent=True) or {}
@@ -131,7 +132,7 @@ def receive_message():
                     message_id = msg.get("id")
                     from_number = msg.get("from")  # MSISDN (sin '+')
 
-                    # --- Idempotencia atómica (insert-first guard) ---
+                    # --- Idempotencia atómica (insert-first guard con UNIQUE(message_id)) ---
                     if WebhookEvent and message_id:
                         try:
                             ev_guard = WebhookEvent(
@@ -142,13 +143,30 @@ def receive_message():
                                 invite_token=None,
                                 sent_ok=False,
                                 signature_valid=sig_ok,
+                                error_reason=None,
                             )
                             db.session.add(ev_guard)
                             db.session.commit()
                         except IntegrityError:
+                            # Ya procesado: registra un 'guard' sin message_id para contar el duplicado y sigue
                             db.session.rollback()
-                            current_app.logger.info(f"[WhatsApp] Duplicado message_id={message_id}, ignorando.")
-                            continue  # ya procesado antes
+                            try:
+                                dup = WebhookEvent(
+                                    event_type="guard",
+                                    message_id=None,  # sin ID para no violar UNIQUE
+                                    from_msisdn=from_number,
+                                    keyword_detected=None,
+                                    invite_token=None,
+                                    sent_ok=False,
+                                    signature_valid=sig_ok,
+                                    error_reason="duplicate_message",
+                                )
+                                db.session.add(dup)
+                                db.session.commit()
+                            except Exception:
+                                db.session.rollback()
+                            current_app.logger.info(f"[WhatsApp] Guard: duplicado message_id={message_id}, ignorando.")
+                            continue  # no procesamos este mensaje otra vez
 
                     # "text" puede venir como objeto {"body": "..."} o no venir
                     text_field = msg.get("text")
@@ -181,6 +199,7 @@ def receive_message():
                                     "keyword_detected": False,
                                     "invite_token": None,
                                     "sent_ok": False,
+                                    "error_reason": "no_keyword",
                                 })
                                 db.session.commit()
                         except Exception:
@@ -230,6 +249,7 @@ def receive_message():
                                     "keyword_detected": True,
                                     "invite_token": inv.token,
                                     "sent_ok": sent_ok,
+                                    "error_reason": None,
                                 })
                                 db.session.commit()
                         except Exception:
@@ -266,6 +286,7 @@ def receive_message():
                                     "keyword_detected": keyword,
                                     "invite_token": None,
                                     "sent_ok": False,
+                                    "error_reason": str(e)[:255],
                                 })
                                 db.session.commit()
                         except Exception:
