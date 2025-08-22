@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { getProviderDashboardSummary } from "../services/dashboardService";
 import { getProviderProfile } from "../services/providerService";
 import UniversalWhatsAppInvite from "../components/provider/UniversalWhatsAppInvite";
+import MetricsPreviewCard from "../components/provider/MetricsPreviewCard";
 
 const StatCard = ({ title, value, linkTo, linkText }) => (
   <div className="bg-white rounded-lg shadow p-4 sm:p-6 w-full">
@@ -139,6 +140,7 @@ export default function ProviderDashboard() {
           title="Próximas Citas (7 días)"
           value={summary?.upcoming_week_count || 0}
         />
+        <MetricsPreviewCard days={14} to="/dashboard/provider/admin/metrics" />
       </section>
 
       <section className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-8">

@@ -1,4 +1,7 @@
+// src/App.jsx
 import { useState, useEffect } from 'react';
+// ❌ OJO: quitamos el import de ensureTokenSync para evitar el error
+// import { ensureTokenSync } from "./api/adminMetrics";
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import PublicLayout from './layouts/PublicLayout';
 import { Toaster } from 'react-hot-toast';
@@ -30,14 +33,33 @@ import ClientDashboard from './pages/ClientDashboard';
 import Magic from './pages/Magic';
 import LoginPhone from './pages/LoginPhone';
 import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
+import AdminMetricsPage from "./pages/AdminMetricsPage";
 
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('accessToken'));
+  const [token, setToken] = useState(localStorage.getItem('accessToken') || localStorage.getItem('access_token'));
   const [role, setRole] = useState(localStorage.getItem('userRole'));
 
+  // --- SHIM: sincroniza accessToken <-> access_token al montar ---
+  useEffect(() => {
+    try {
+      const t1 = localStorage.getItem('accessToken');
+      const t2 = localStorage.getItem('access_token');
+      const chosen = t1 || t2;
+      if (chosen) {
+        if (t1 !== chosen) localStorage.setItem('accessToken', chosen);
+        if (t2 !== chosen) localStorage.setItem('access_token', chosen);
+        // actualiza estado para que rutas protegidas funcionen sin recargar
+        setToken(chosen);
+        // notifica cambios (el StorageEvent nativo no salta en la misma pestaña)
+        window.dispatchEvent(new Event('storage'));
+      }
+    } catch {}
+  }, []);
+
+  // escucha cambios de storage para mantener estado en sync
   useEffect(() => {
     const handleStorageChange = () => {
-      setToken(localStorage.getItem('accessToken'));
+      setToken(localStorage.getItem('accessToken') || localStorage.getItem('access_token'));
       setRole(localStorage.getItem('userRole'));
     };
     window.addEventListener('storage', handleStorageChange);
@@ -46,16 +68,21 @@ function App() {
   
   const handleLogin = (newToken, newRole) => {
     localStorage.setItem('accessToken', newToken);
+    localStorage.setItem('access_token', newToken); // normalizamos ambas
     localStorage.setItem('userRole', newRole);
     setToken(newToken);
     setRole(newRole);
+    // disparar storage para otros listeners internos
+    window.dispatchEvent(new Event('storage'));
   };
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('access_token');
     localStorage.removeItem('userRole');
     setToken(null);
     setRole(null);
+    window.dispatchEvent(new Event('storage'));
   };
 
   return (
@@ -100,8 +127,8 @@ function App() {
                 <Route path="appointments" element={<ProviderAppointments />} />
                 <Route path="staff" element={<ManageStaff />} />
                 <Route path="staff/availability" element={<ManageStaffAvailability />} />
-                {/* NUEVA RUTA: QR/Enlace universal WhatsApp */}
                 <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
+                <Route path="admin/metrics" element={<AdminMetricsPage />} />
               </Route>
             )}
 
