@@ -102,6 +102,14 @@ export default function DashboardLayout({ handleLogout }) {
               Servicios
             </Link>
           </li>
+          <li>
+            <Link
+              to="/dashboard/provider/admin/metrics"
+              style={{ ...linkBaseStyle, ...getLinkStyle('/dashboard/provider/admin/metrics') }}
+            >
+              Métricas
+            </Link>
+          </li>
         </>
       );
     }
