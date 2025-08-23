@@ -1,7 +1,12 @@
 // src/pages/AdminMetricsPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
-import { fetchWhatsAppMetrics, fetchOTPMetrics, fetchWebhookMetrics } from "../api/adminMetrics";
+import {
+  fetchWhatsAppMetrics,
+  fetchOTPMetrics,
+  fetchWebhookMetrics,
+} from "../api/adminMetrics";
 import Button from "../components/ui/Button";
+import { toCSV, downloadCSV } from "../utils/csv";
 
 // Recharts
 import {
@@ -49,7 +54,9 @@ const readLSBool = (k, fallback) => {
   return raw === "true";
 };
 const writeLS = (k, v) => {
-  try { localStorage.setItem(k, String(v)); } catch {}
+  try {
+    localStorage.setItem(k, String(v));
+  } catch {}
 };
 
 // ===== TokenBadge aislado (no re-renderiza toda la página) =====
@@ -71,7 +78,8 @@ function TokenBadge() {
 
   useEffect(() => {
     if (!show) return;
-    const t = localStorage.getItem("access_token") || localStorage.getItem("accessToken");
+    const t =
+      localStorage.getItem("access_token") || localStorage.getItem("accessToken");
     const data = decodeJwt(t);
     if (!data?.exp) {
       setLeft(null);
@@ -131,7 +139,12 @@ function UISwitch({ checked, onChange, label }) {
 
 // Tooltips custom
 function Dot({ color }) {
-  return <span className="inline-block h-2.5 w-2.5 rounded-full mr-2" style={{ background: color }} />;
+  return (
+    <span
+      className="inline-block h-2.5 w-2.5 rounded-full mr-2"
+      style={{ background: color }}
+    />
+  );
 }
 
 function CustomLineTooltip({ active, label, payload, colors, title }) {
@@ -208,28 +221,38 @@ export default function AdminMetricsPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [rangeDays, setRangeDays] = useState(() => readLSInt(LS_KEYS.rangeDays, 14)); // 7/14/30
   const [whMinutes, setWhMinutes] = useState(() => readLSInt(LS_KEYS.whMinutes, 60)); // 15/30/60/120
-  const [whTop, setWhTop] = useState(() => readLSInt(LS_KEYS.whTop, 5));              // 3/5/10
+  const [whTop, setWhTop] = useState(() => readLSInt(LS_KEYS.whTop, 5)); // 3/5/10
 
   // Auto-refresh (persistidos)
   const [autoRefresh, setAutoRefresh] = useState(() => readLSBool(LS_KEYS.autoRefresh, false));
   const [refreshSec, setRefreshSec] = useState(() => readLSInt(LS_KEYS.refreshSec, 60)); // 30/60/120
 
   // Persistir cuando cambien
-  useEffect(() => { writeLS(LS_KEYS.rangeDays, rangeDays); }, [rangeDays]);
-  useEffect(() => { writeLS(LS_KEYS.whMinutes, whMinutes); }, [whMinutes]);
-  useEffect(() => { writeLS(LS_KEYS.whTop, whTop); }, [whTop]);
-  useEffect(() => { writeLS(LS_KEYS.autoRefresh, autoRefresh); }, [autoRefresh]);
-  useEffect(() => { writeLS(LS_KEYS.refreshSec, refreshSec); }, [refreshSec]);
+  useEffect(() => {
+    writeLS(LS_KEYS.rangeDays, rangeDays);
+  }, [rangeDays]);
+  useEffect(() => {
+    writeLS(LS_KEYS.whMinutes, whMinutes);
+  }, [whMinutes]);
+  useEffect(() => {
+    writeLS(LS_KEYS.whTop, whTop);
+  }, [whTop]);
+  useEffect(() => {
+    writeLS(LS_KEYS.autoRefresh, autoRefresh);
+  }, [autoRefresh]);
+  useEffect(() => {
+    writeLS(LS_KEYS.refreshSec, refreshSec);
+  }, [refreshSec]);
 
   // Colores por serie (marca)
   const waColors = {
-    created: "#2563eb",   // blue-600
-    consumed: "#10b981",  // emerald-500
+    created: "#2563eb", // blue-600
+    consumed: "#10b981", // emerald-500
   };
   const otpColors = {
-    issued:   "#2563eb",
+    issued: "#2563eb",
     verified: "#10b981",
-    expired:  "#ef4444",  // red-500
+    expired: "#ef4444", // red-500
   };
 
   async function loadAll() {
@@ -247,10 +270,7 @@ export default function AdminMetricsPage() {
       setLastUpdated(new Date());
     } catch (e) {
       console.error(e);
-      setErr(
-        e?.message ||
-          "No se pudieron cargar las métricas. Verifica tu token o el backend."
-      );
+      setErr(e?.message || "No se pudieron cargar las métricas. Verifica tu token o el backend.");
     } finally {
       setLoading(false);
     }
@@ -295,6 +315,65 @@ export default function AdminMetricsPage() {
       count: Number(r.count),
     }));
   }, [wh]);
+
+  // ---- Exportaciones CSV ----
+  const exportWaCSV = () => {
+    if (!wa) return;
+    const rows = (waChartData || []).map((r) => ({
+      day: r.day,
+      created: Number(r.created ?? 0),
+      consumed: Number(r.consumed ?? 0),
+    }));
+    const csv = toCSV(rows, [
+      { key: "day", label: "day" },
+      { key: "created", label: "created" },
+      { key: "consumed", label: "consumed" },
+    ]);
+    downloadCSV(`wa_invites_${wa?.range_days ?? "range"}d.csv`, csv);
+  };
+
+  const exportOtpCSV = () => {
+    if (!otp) return;
+    const rows = (otpChartData || []).map((r) => ({
+      day: r.day,
+      issued: Number(r.issued ?? 0),
+      verified: Number(r.verified ?? 0),
+      expired: Number(r.expired ?? 0),
+    }));
+    const csv = toCSV(rows, [
+      { key: "day", label: "day" },
+      { key: "issued", label: "issued" },
+      { key: "verified", label: "verified" },
+      { key: "expired", label: "expired" },
+    ]);
+    downloadCSV(`otp_${otp?.range_days ?? "range"}d.csv`, csv);
+  };
+
+  const exportWebhookTopCSV = () => {
+    if (!wh) return;
+    const rows = (wh.top_senders || []).map((r) => ({
+      from: r.from,
+      events: Number(r.events ?? 0),
+    }));
+    const csv = toCSV(rows, [
+      { key: "from", label: "from" },
+      { key: "events", label: "events" },
+    ]);
+    downloadCSV(`webhook_top_${wh?.window_minutes ?? 60}m.csv`, csv);
+  };
+
+  const exportWebhookTypesCSV = () => {
+    if (!wh) return;
+    const rows = (wh.totals_by_type || []).map((r) => ({
+      event_type: r.event_type,
+      count: Number(r.count ?? 0),
+    }));
+    const csv = toCSV(rows, [
+      { key: "event_type", label: "event_type" },
+      { key: "count", label: "count" },
+    ]);
+    downloadCSV(`webhook_types_${wh?.window_minutes ?? 60}m.csv`, csv);
+  };
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -384,7 +463,11 @@ export default function AdminMetricsPage() {
                 <div className="flex items-center justify-between">
                   <label className="text-sm text-slate-600">Auto-refresh</label>
                   <div className="flex items-center gap-2">
-                    <UISwitch checked={autoRefresh} onChange={setAutoRefresh} label="Auto refresh" />
+                    <UISwitch
+                      checked={autoRefresh}
+                      onChange={setAutoRefresh}
+                      label="Auto refresh"
+                    />
                     <select
                       className="rounded-lg border px-2 py-1 text-sm"
                       value={refreshSec}
@@ -400,11 +483,7 @@ export default function AdminMetricsPage() {
               </div>
 
               <div className="mt-4 flex justify-end gap-2">
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={() => setShowSettings(false)}
-                >
+                <Button variant="link" size="sm" onClick={() => setShowSettings(false)}>
                   Cancelar
                 </Button>
                 <Button
@@ -438,6 +517,13 @@ export default function AdminMetricsPage() {
           <div className="text-sm text-slate-500">Cargando…</div>
         ) : (
           <div className="rounded-lg border bg-white">
+            {/* Toolbar de exportación */}
+            <div className="p-3 border-b flex justify-end">
+              <Button size="sm" variant="outline" onClick={exportWaCSV}>
+                Exportar CSV
+              </Button>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4">
               <Stat label="Invites creadas" value={fmt(wa?.totals?.created)} />
               <Stat label="Invites consumidas" value={fmt(wa?.totals?.consumed)} />
@@ -450,14 +536,35 @@ export default function AdminMetricsPage() {
               <div className="text-sm font-medium mb-2">Creadas vs Consumidas</div>
               <div className="h-72 w-full min-w-0">
                 <ResponsiveContainer>
-                  <LineChart data={waChartData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                  <LineChart
+                    data={waChartData}
+                    margin={{ top: 5, right: 20, left: 0, bottom: 0 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="day" tickFormatter={fmtDate} />
                     <YAxis allowDecimals={false} />
-                    <Tooltip content={<CustomLineTooltip colors={waColors} title="WhatsApp" />} />
+                    <Tooltip
+                      content={<CustomLineTooltip colors={waColors} title="WhatsApp" />}
+                    />
                     <Legend />
-                    <Line type="monotone" dataKey="created" name="created" stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="consumed" name="consumed" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line
+                      type="monotone"
+                      dataKey="created"
+                      name="created"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="consumed"
+                      name="consumed"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -481,28 +588,69 @@ export default function AdminMetricsPage() {
           <div className="text-sm text-slate-500">Cargando…</div>
         ) : (
           <div className="rounded-lg border bg-white">
+            {/* Toolbar de exportación */}
+            <div className="p-3 border-b flex justify-end">
+              <Button size="sm" variant="outline" onClick={exportOtpCSV}>
+                Exportar CSV
+              </Button>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4">
               <Stat label="Emitidos" value={fmt(otp?.totals?.issued)} />
               <Stat label="Verificados" value={fmt(otp?.totals?.verified)} />
               <Stat label="Expirados" value={fmt(otp?.totals?.expired)} />
               <Stat label="Ratio verificación" value={pct(otp?.totals?.verify_rate)} />
-              <Stat label="Intentos (media verificados)" value={fmt(otp?.totals?.avg_attempts_verified)} />
+              <Stat
+                label="Intentos (media verificados)"
+                value={fmt(otp?.totals?.avg_attempts_verified)}
+              />
             </div>
 
             {/* Gráfica responsiva */}
             <div className="p-4 border-t">
-              <div className="text-sm font-medium mb-2">Emitidos / Verificados / Expirados</div>
+              <div className="text-sm font-medium mb-2">
+                Emitidos / Verificados / Expirados
+              </div>
               <div className="h-72 w-full min-w-0">
                 <ResponsiveContainer>
-                  <LineChart data={otpChartData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                  <LineChart
+                    data={otpChartData}
+                    margin={{ top: 5, right: 20, left: 0, bottom: 0 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="day" tickFormatter={fmtDate} />
                     <YAxis allowDecimals={false} />
-                    <Tooltip content={<CustomLineTooltip colors={otpColors} title="OTP" />} />
+                    <Tooltip
+                      content={<CustomLineTooltip colors={otpColors} title="OTP" />}
+                    />
                     <Legend />
-                    <Line type="monotone" dataKey="issued" name="issued" stroke="#2563eb" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="verified" name="verified" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="expired" name="expired" stroke="#ef4444" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line
+                      type="monotone"
+                      dataKey="issued"
+                      name="issued"
+                      stroke="#2563eb"
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="verified"
+                      name="verified"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="expired"
+                      name="expired"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -526,6 +674,16 @@ export default function AdminMetricsPage() {
           <div className="text-sm text-slate-500">Cargando…</div>
         ) : (
           <div className="rounded-lg border bg-white">
+            {/* Toolbar de exportación */}
+            <div className="p-3 border-b flex flex-wrap gap-2 justify-end">
+              <Button size="sm" variant="outline" onClick={exportWebhookTopCSV}>
+                Top emisores CSV
+              </Button>
+              <Button size="sm" variant="outline" onClick={exportWebhookTypesCSV}>
+                Totales por tipo CSV
+              </Button>
+            </div>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4">
               <Stat label="Eventos recientes" value={fmt(wh?.recent?.total_events)} />
               <Stat label="Emisores únicos" value={fmt(wh?.recent?.unique_senders)} />
@@ -538,13 +696,23 @@ export default function AdminMetricsPage() {
               <div className="text-sm font-medium mb-2">Eventos por tipo</div>
               <div className="h-72 w-full min-w-0">
                 <ResponsiveContainer>
-                  <BarChart data={whBarData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
+                  <BarChart
+                    data={whBarData}
+                    margin={{ top: 5, right: 20, left: 0, bottom: 0 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="type" />
                     <YAxis allowDecimals={false} />
-                    <Tooltip content={<CustomBarTooltip title="Webhook events" />} />
+                    <Tooltip
+                      content={<CustomBarTooltip title="Webhook events" />}
+                    />
                     <Legend />
-                    <Bar dataKey="count" name="count" fill="#2563eb" isAnimationActive={false} />
+                    <Bar
+                      dataKey="count"
+                      name="count"
+                      fill="#2563eb"
+                      isAnimationActive={false}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -569,7 +737,9 @@ export default function AdminMetricsPage() {
               />
               <div className="text-xs text-slate-500">
                 <div className="font-medium mb-1">Ventana</div>
-                <div>Desde: {wh?.since ? new Date(wh.since).toLocaleString() : "—"}</div>
+                <div>
+                  Desde: {wh?.since ? new Date(wh.since).toLocaleString() : "—"}
+                </div>
                 <div>Minutos: {fmt(wh?.window_minutes)}</div>
               </div>
             </div>
@@ -631,7 +801,10 @@ function MiniList({ title, rows, empty = "Sin datos." }) {
       ) : (
         <ul className="text-sm divide-y">
           {list.map((r) => (
-            <li key={String(r.k)} className="flex items-center justify-between py-2">
+            <li
+              key={String(r.k)}
+              className="flex items-center justify-between py-2"
+            >
               <span className="truncate pr-3">{r.k}</span>
               <span className="font-mono">{fmt(Number(r.v))}</span>
             </li>

@@ -67,7 +67,7 @@ export default function MetricsPreviewCard({
           {/* KPIs compactos en la misma línea, tamaño text-xs y color negro */}
           <div className="mt-1 text-xs text-black flex flex-wrap items-center gap-x-4 gap-y-1">
             <span><span className="font-medium">Creadas:</span> {fmt(created)}</span>
-            <span className="text-slate-300">〰️</span>
+            <span className="text-slate-300"></span>
             <span><span className="font-medium">Consumidas:</span> {fmt(consumed)}</span>
             <span className="text-slate-300"></span>
             <span><span className="font-medium">Conversión:</span> {pct(conv)}</span>
