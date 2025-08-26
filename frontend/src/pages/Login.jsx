@@ -5,20 +5,46 @@ import toast from 'react-hot-toast';
 import { loginUser, loginWithGoogle } from '../services/authService';
 import GoogleLoginComponent from "./GoogleLoginComponent";
 import Button from '../components/ui/Button';
-import Input from '../components/ui/Input'; 
+import Input from '../components/ui/Input';
+
+// Util: decodifica el JWT (solo header.payload)
+function decodeJwt(token) {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const json = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return json || null;
+  } catch {
+    return null;
+  }
+}
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
   const navigate = useNavigate();
   const location = useLocation();
 
-  const persistAuth = (accessToken, role) => {
-    // Guardamos en ambas claves para compatibilidad con /admin/metrics
-    localStorage.setItem('access_token', accessToken);
-    localStorage.setItem('accessToken', accessToken);
+  const persistAuth = (accessToken, refreshToken, role) => {
+    // Guardamos en ambas claves por compatibilidad con /admin/metrics
+    if (accessToken) {
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('accessToken', accessToken);
+      const a = decodeJwt(accessToken);
+      if (a?.exp) localStorage.setItem('access_exp', String(a.exp));
+    }
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      const r = decodeJwt(refreshToken);
+      if (r?.exp) localStorage.setItem('refresh_exp', String(r.exp));
+    }
     localStorage.setItem('userRole', role || '');
-    // Y notificamos al contenedor (App) para que actualice estado
+
+    // Notifica a App para que actualice su estado
     if (typeof onLogin === 'function') onLogin(accessToken, role);
   };
 
@@ -29,24 +55,32 @@ function Login({ onLogin }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
+      // IMPORTANTE: tu backend ahora devuelve { access_token, refresh_token, role, ... }
       const data = await loginUser(email, password);
-      persistAuth(data.access_token, data.role);
+      persistAuth(data.access_token, data.refresh_token, data.role);
       toast.success('¡Bienvenido/a de nuevo!');
       redirectAfterLogin();
     } catch (error) {
       toast.error(error.message || "Error al iniciar sesión.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleGoogleLogin = async (googleToken) => {
+    setSubmitting(true);
     try {
+      // Asegúrate de que /login/google también devuelva refresh_token
       const data = await loginWithGoogle(googleToken);
-      persistAuth(data.access_token, data.role);
+      persistAuth(data.access_token, data.refresh_token, data.role);
       toast.success('¡Bienvenido/a de nuevo!');
       redirectAfterLogin();
     } catch (error) {
       toast.error(error.message || "Error en el inicio con Google.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -78,6 +112,7 @@ function Login({ onLogin }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={submitting}
             />
             <Input
               type="password"
@@ -85,9 +120,10 @@ function Login({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              disabled={submitting}
             />
-            <Button type="submit" variant="primary" className="w-full">
-              Entrar
+            <Button type="submit" variant="primary" className="w-full" disabled={submitting}>
+              {submitting ? 'Entrando…' : 'Entrar'}
             </Button>
           </form>
 
