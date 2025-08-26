@@ -1,10 +1,15 @@
 # backend/config.py
 import os
+from datetime import timedelta 
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or '0g>G#hwr69RxTc#qt8'
     JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'EstaEsMiClaveDePruebaFinalConSoloLetrasYNumerosABCDEF123456'
-    JWT_ACCESS_TOKEN_EXPIRES = 3600
+    _ACCESS_SEC  = int(os.environ.get('JWT_ACCESS_TOKEN_EXPIRES', 3600))
+    _REFRESH_SEC = int(os.environ.get('JWT_REFRESH_TOKEN_EXPIRES', 2592000))  # 30 días
+
+    JWT_ACCESS_TOKEN_EXPIRES  = timedelta(seconds=_ACCESS_SEC)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(seconds=_REFRESH_SEC)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     SQLALCHEMY_ENGINE_OPTIONS = {

@@ -7,6 +7,19 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { getLastPhone, setLastPhone } from '../utils/phoneMemory';
 
+// Util: decodifica el JWT (solo payload)
+function decodeJwt(token) {
+  if (!token) return null;
+  const parts = token.split('.');
+  if (parts.length < 2) return null;
+  try {
+    const json = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return json || null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginPhone() {
   const [step, setStep] = useState('phone'); // 'phone' | 'code'
   const [phone, setPhone] = useState('');
@@ -20,6 +33,23 @@ export default function LoginPhone() {
   const autoSend = searchParams.get('send') === '1';
 
   const lastPhone = useMemo(() => getLastPhone() || '', []);
+
+  // Guarda tokens/role en localStorage (ambas claves para compatibilidad)
+  const persistAuth = (accessToken, refreshToken, role) => {
+    if (accessToken) {
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('accessToken', accessToken);
+      const a = decodeJwt(accessToken);
+      if (a?.exp) localStorage.setItem('access_exp', String(a.exp));
+    }
+    if (refreshToken) {
+      localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      const r = decodeJwt(refreshToken);
+      if (r?.exp) localStorage.setItem('refresh_exp', String(r.exp));
+    }
+    if (role) localStorage.setItem('userRole', role);
+  };
 
   const onRequest = async (e) => {
     e?.preventDefault?.();
@@ -66,15 +96,21 @@ export default function LoginPhone() {
     }
     setLoading(true);
     try {
-      const { profile_complete } = await verifyPhoneOtp(normalized, code.trim());
+      // ⬇️ IMPORTANTE: asegúrate de que tu backend devuelva también refresh_token y role
+      // Respuesta esperada: { access_token, refresh_token, role, profile_complete, ... }
+      const data = await verifyPhoneOtp(normalized, code.trim());
 
+      // Persistimos sesión
+      persistAuth(data.access_token, data.refresh_token, data.role);
       // Guardamos el teléfono tras verificar correctamente
       setLastPhone(normalized);
 
       toast.success('Sesión iniciada');
 
-      if (!profile_complete) {
-        // Ojo: ruta dentro del dashboard para el perfil de cliente
+      // Redirección:
+      // - Si el perfil no está completo, te mando al perfil cliente
+      // - Si está completo, voy a "next" (o home) respetando el query param
+      if (!data?.profile_complete) {
         navigate('/dashboard/client/profile', { replace: true });
       } else {
         navigate(next, { replace: true });

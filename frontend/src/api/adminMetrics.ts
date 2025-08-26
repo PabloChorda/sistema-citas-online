@@ -39,8 +39,17 @@ export type WebhookMetrics = {
 // ---------- Config ----------
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:5001/api";
 
-// Lee token desde cualquiera de las dos claves que usamos en la app
-function getToken(): string | null {
+// Sincroniza access_token por compatibilidad (accessToken -> access_token)
+export function ensureTokenSync() {
+  try {
+    const at = localStorage.getItem("accessToken");
+    if (at && localStorage.getItem("access_token") !== at) {
+      localStorage.setItem("access_token", at);
+    }
+  } catch {}
+}
+
+function getAccessToken(): string | null {
   const keys = ["access_token", "accessToken"];
   for (const k of keys) {
     const v = localStorage.getItem(k);
@@ -49,50 +58,78 @@ function getToken(): string | null {
   return null;
 }
 
-/**
- * Sincroniza las dos claves de token en localStorage:
- * - Si existe en una y no en la otra, lo copia.
- * - Si existen ambos y difieren, prioriza `accessToken`.
- * Devuelve true si hizo algún cambio; además dispara un `storage` para que React
- * se entere sin recargar.
- */
-export function ensureTokenSync(): boolean {
-  try {
-    const t1 = localStorage.getItem("accessToken");
-    const t2 = localStorage.getItem("access_token");
-    const chosen = t1 || t2;
-    if (!chosen) return false;
+function getRefreshToken(): string | null {
+  return localStorage.getItem("refresh_token");
+}
 
-    let changed = false;
-    if (t2 !== chosen) {
-      localStorage.setItem("access_token", chosen);
-      changed = true;
+function setAccessToken(token: string) {
+  localStorage.setItem("access_token", token);
+  localStorage.setItem("accessToken", token);
+}
+
+function clearTokens() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refresh_token");
+  localStorage.removeItem("userRole");
+}
+
+// ---------- Refresh helper ----------
+async function tryRefreshAccessToken(): Promise<string | null> {
+  const rt = getRefreshToken();
+  if (!rt) return null;
+
+  const res = await fetch(`${API_BASE}/auth/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${rt}`,
+    },
+    credentials: "include",
+  });
+
+  if (!res.ok) return null;
+
+  try {
+    const data = await res.json();
+    const at = data?.access_token;
+    if (at) {
+      setAccessToken(at);
+      return at;
     }
-    if (t1 !== chosen) {
-      localStorage.setItem("accessToken", chosen);
-      changed = true;
-    }
-    if (changed) {
-      // Nota: el StorageEvent nativo no se dispara en la misma pestaña,
-      // pero este Event simple sí activa nuestros listeners.
-      window.dispatchEvent(new Event("storage"));
-    }
-    return changed;
-  } catch {
-    return false;
-  }
+  } catch {}
+  return null;
 }
 
 // ---------- Helper fetch ----------
 async function apiGet<T>(path: string): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: "include",
-  });
+  const doFetch = async () => {
+    const token = getAccessToken();
+    return fetch(`${API_BASE}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: "include",
+    });
+  };
+
+  let res = await doFetch();
+
+  // Si caducó, intentamos refresh y reintentamos UNA vez
+  if (res.status === 401) {
+    const refreshed = await tryRefreshAccessToken();
+    if (refreshed) {
+      res = await doFetch();
+    } else {
+      // refresh inválido/caducado: limpiamos y mandamos a login
+      clearTokens();
+      const next = encodeURIComponent(window.location.pathname + window.location.search);
+      window.location.replace(`/login?next=${next}`);
+      // y lanzamos el error para cortar la ejecución actual
+      throw new Error(`GET ${path} 401: Token expired`);
+    }
+  }
 
   if (!res.ok) {
     let detail = "";
@@ -102,9 +139,7 @@ async function apiGet<T>(path: string): Promise<T> {
     } catch {
       try {
         detail = await res.text();
-      } catch {
-        detail = "";
-      }
+      } catch {}
     }
     throw new Error(`GET ${path} ${res.status}: ${detail || res.statusText}`);
   }
@@ -113,14 +148,11 @@ async function apiGet<T>(path: string): Promise<T> {
 }
 
 // ---------- Endpoints ----------
-export const fetchWhatsAppMetrics = (days: number = 14) =>
+export const fetchWhatsAppMetrics = (days = 14) =>
   apiGet<WhatsAppMetrics>(`/admin/metrics/whatsapp?days=${Number(days)}`);
 
-export const fetchOTPMetrics = (days: number = 14) =>
+export const fetchOTPMetrics = (days = 14) =>
   apiGet<OTPMetrics>(`/admin/metrics/otp?days=${Number(days)}`);
 
-export const fetchWebhookMetrics = (minutes: number = 60, top: number = 5) => {
-  const m = Number(minutes);
-  const t = Number(top);
-  return apiGet<WebhookMetrics>(`/admin/metrics/webhook?minutes=${m}&top=${t}`);
-};
+export const fetchWebhookMetrics = (minutes = 60, top = 5) =>
+  apiGet<WebhookMetrics>(`/admin/metrics/webhook?minutes=${Number(minutes)}&top=${Number(top)}`);

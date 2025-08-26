@@ -2,6 +2,7 @@
 from flask import Blueprint, jsonify, request, current_app, redirect
 from flask_jwt_extended import (
     create_access_token,
+    create_refresh_token,
     jwt_required,
     get_jwt_identity,
 )
@@ -167,11 +168,17 @@ def login():
         if not user or not user.check_password(password):
             return jsonify({"msg": "Credenciales incorrectas"}), 401
 
+        # ⬇️ Generamos ambos tokens
         access_token = create_access_token(identity=str(user.user_id))
+        refresh_token = create_refresh_token(identity=str(user.user_id))
+
+        # Notificación opcional
         send_login_notification(user)
 
+        # ⬇️ Devolvemos también el refresh_token
         return jsonify({
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "user_id": user.user_id,
             "role": user.role
         }), 200
@@ -179,6 +186,14 @@ def login():
     except Exception as e:
         current_app.logger.error(f"Error en login: {e}", exc_info=True)
         return jsonify({"msg": "Error interno del servidor", "error_details": str(e)}), 500
+    
+@bp.post("/refresh")
+@jwt_required(refresh=True)
+def refresh_token():
+    """Devuelve un nuevo access_token usando el refresh_token."""
+    identity = get_jwt_identity()
+    access = create_access_token(identity=identity)
+    return jsonify(access_token=access), 200
 
 @bp.route('/protected', methods=['GET'])
 @jwt_required()
@@ -273,8 +288,8 @@ def google_oauth_login():
 
         email = idinfo.get('email')
         first_name = idinfo.get('given_name', '')
-        last_name = idinfo.get('family_name', '')
-        picture = idinfo.get('picture', '')
+        last_name  = idinfo.get('family_name', '')
+        picture    = idinfo.get('picture', '')
 
         if not email:
             return jsonify({"msg": "No se pudo obtener el email del token"}), 400
@@ -295,11 +310,13 @@ def google_oauth_login():
             db.session.add(user)
             db.session.commit()
 
-        access_token = create_access_token(identity=str(user.user_id))
+        access_token  = create_access_token(identity=str(user.user_id))
+        refresh_token = create_refresh_token(identity=str(user.user_id))
         send_login_notification(user)
 
         return jsonify({
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "user_id": user.user_id,
             "role": user.role
         }), 200
@@ -310,6 +327,7 @@ def google_oauth_login():
     except Exception as e:
         current_app.logger.error(f"Error en login social: {e}", exc_info=True)
         return jsonify({"msg": "Error en login social", "error": str(e)}), 500
+
 
 @bp.route('/whatsapp/init', methods=['POST'])
 @jwt_required()
@@ -365,7 +383,7 @@ def magic():
     """
     Valida el token mágico y emite un access_token normal.
     Query: /auth/magic?token=...
-    Respuesta: { "access_token": "...", "user_id": ..., "role": "...", "profile_complete": bool }
+    Respuesta: { "access_token": "...", "refresh_token": "...", ... }
     """
     token = (request.args.get("token") or "").strip()
     if not token:
@@ -379,14 +397,17 @@ def magic():
         current_app.logger.error(f"Error validando magic link: {e}", exc_info=True)
         return jsonify({"msg": "Error interno validando enlace"}), 500
 
-    access_token = create_access_token(identity=str(user.user_id))
+    access_token  = create_access_token(identity=str(user.user_id))
+    refresh_token = create_refresh_token(identity=str(user.user_id))
 
     return jsonify({
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "user_id": user.user_id,
         "role": user.role,
         "profile_complete": _profile_complete(user)
     }), 200
+
 
 @bp.route('/email/resend-verification', methods=['POST'], endpoint='email_resend_verification')
 @jwt_required()
@@ -442,14 +463,16 @@ def phone_request_otp():
 def phone_verify_otp():
     data = request.get_json(silent=True) or {}
     phone = (data.get("phone_number") or "").strip()
-    code = (data.get("code") or "").strip()
+    code  = (data.get("code") or "").strip()
     if not phone or not code:
         return jsonify({"msg": "phone_number y code requeridos"}), 400
     try:
         user = otp_verify(phone, code, purpose="login")
-        access_token = create_access_token(identity=str(user.user_id))
+        access_token  = create_access_token(identity=str(user.user_id))
+        refresh_token = create_refresh_token(identity=str(user.user_id))
         return jsonify({
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "user_id": user.user_id,
             "role": user.role,
             "profile_complete": _profile_complete(user),
