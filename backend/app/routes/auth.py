@@ -278,7 +278,6 @@ def google_oauth_login():
     try:
         data = request.get_json()
         token = data.get('token')
-
         if not token:
             return jsonify({"msg": "Token requerido"}), 400
 
@@ -288,14 +287,13 @@ def google_oauth_login():
 
         email = idinfo.get('email')
         first_name = idinfo.get('given_name', '')
-        last_name  = idinfo.get('family_name', '')
-        picture    = idinfo.get('picture', '')
+        last_name = idinfo.get('family_name', '')
+        picture = idinfo.get('picture', '')
 
         if not email:
             return jsonify({"msg": "No se pudo obtener el email del token"}), 400
 
         user = User.query.filter_by(email=email).first()
-
         if not user:
             user = User(
                 email=email,
@@ -310,9 +308,10 @@ def google_oauth_login():
             db.session.add(user)
             db.session.commit()
 
-        access_token  = create_access_token(identity=str(user.user_id))
+        access_token = create_access_token(identity=str(user.user_id))
         refresh_token = create_refresh_token(identity=str(user.user_id))
-        send_login_notification(user)
+
+        # (opcional) send_login_notification(user)
 
         return jsonify({
             "access_token": access_token,
@@ -457,19 +456,22 @@ def phone_request_otp():
         return jsonify({"msg": "No se pudo enviar el código"}), 500
 
 @bp.route('/phone/verify-otp', methods=['POST'])
-@limiter.limit("30 per 10 minutes")                               # respaldo por IP
-@limiter.limit("8 per 10 minutes", key_func=_key_phone_from_body)  # por teléfono
-@limiter.limit("3 per 30 seconds", key_func=_key_phone_from_body)  # anti-burst
+@limiter.limit("30 per 10 minutes")
+@limiter.limit("8 per 10 minutes", key_func=_key_phone_from_body)
+@limiter.limit("3 per 30 seconds", key_func=_key_phone_from_body)
 def phone_verify_otp():
     data = request.get_json(silent=True) or {}
     phone = (data.get("phone_number") or "").strip()
-    code  = (data.get("code") or "").strip()
+    code = (data.get("code") or "").strip()
     if not phone or not code:
         return jsonify({"msg": "phone_number y code requeridos"}), 400
     try:
         user = otp_verify(phone, code, purpose="login")
-        access_token  = create_access_token(identity=str(user.user_id))
+
+        # ⬇️ ahora ambos tokens
+        access_token = create_access_token(identity=str(user.user_id))
         refresh_token = create_refresh_token(identity=str(user.user_id))
+
         return jsonify({
             "access_token": access_token,
             "refresh_token": refresh_token,
