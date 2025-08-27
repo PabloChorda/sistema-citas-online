@@ -7,7 +7,7 @@ import GoogleLoginComponent from "./GoogleLoginComponent";
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 
-// Util: decodifica el JWT (solo header.payload)
+// Util: decodifica el JWT (solo payload)
 function decodeJwt(token) {
   if (!token) return null;
   const parts = token.split('.');
@@ -29,7 +29,7 @@ function Login({ onLogin }) {
   const location = useLocation();
 
   const persistAuth = (accessToken, refreshToken, role) => {
-    // Guardamos en ambas claves por compatibilidad con /admin/metrics
+    // Guardamos en ambas claves por compatibilidad con métricas y otros
     if (accessToken) {
       localStorage.setItem('access_token', accessToken);
       localStorage.setItem('accessToken', accessToken);
@@ -44,7 +44,7 @@ function Login({ onLogin }) {
     }
     localStorage.setItem('userRole', role || '');
 
-    // Notifica a App para que actualice su estado
+    // Notifica a App para actualizar estado global
     if (typeof onLogin === 'function') onLogin(accessToken, role);
   };
 
@@ -57,13 +57,13 @@ function Login({ onLogin }) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      // IMPORTANTE: tu backend ahora devuelve { access_token, refresh_token, role, ... }
+      // Backend devuelve { access_token, refresh_token, role, ... }
       const data = await loginUser(email, password);
       persistAuth(data.access_token, data.refresh_token, data.role);
       toast.success('¡Bienvenido/a de nuevo!');
       redirectAfterLogin();
     } catch (error) {
-      toast.error(error.message || "Error al iniciar sesión.");
+      toast.error(error?.message || "Error al iniciar sesión.");
     } finally {
       setSubmitting(false);
     }
@@ -72,13 +72,13 @@ function Login({ onLogin }) {
   const handleGoogleLogin = async (googleToken) => {
     setSubmitting(true);
     try {
-      // Asegúrate de que /login/google también devuelva refresh_token
+      // Recomendado: que /api/oauth/google también devuelva refresh_token
       const data = await loginWithGoogle(googleToken);
       persistAuth(data.access_token, data.refresh_token, data.role);
       toast.success('¡Bienvenido/a de nuevo!');
       redirectAfterLogin();
     } catch (error) {
-      toast.error(error.message || "Error en el inicio con Google.");
+      toast.error(error?.message || "Error en el inicio con Google.");
     } finally {
       setSubmitting(false);
     }

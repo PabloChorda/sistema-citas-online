@@ -1,116 +1,109 @@
 // frontend/src/services/authService.js
 
-// Importamos el apiClient centralizado.
-// Toda la lógica de fetch, cabeceras y manejo de errores se delega a él.
-import { apiClient } from './apiClient';
+// Unificado para usar el cliente HTTP centralizado (con refresh silencioso)
+import { apiClient, setAccessToken, setRefreshToken } from '../api/http';
 
-// El apiClient ya conoce la URL base, así que solo pasamos el endpoint específico.
-const AUTH_ENDPOINT_PREFIX = '/auth';
+const AUTH = '/auth';
 
-// --- FUNCIONES DE AUTENTICACIÓN REFACTORIZADAS ---
+// --- FUNCIONES DE AUTENTICACIÓN ---
 
 /**
  * Inicia sesión de un usuario.
- * @param {string} email
- * @param {string} password
- * @returns {Promise<object>}
+ * Backend devuelve: { access_token, refresh_token, role, user_id, ... }
  */
 export function loginUser(email, password) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/login`, 'POST', { email, password });
+  return apiClient(`${AUTH}/login`, 'POST', { email, password });
 }
 
 /**
- * Registra un nuevo usuario de tipo 'client'.
- * @param {object} userData
- * @returns {Promise<object>}
+ * Registra un nuevo 'client'.
  */
 export function registerUser(userData) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/register/client`, 'POST', userData);
+  return apiClient(`${AUTH}/register/client`, 'POST', userData);
 }
 
 /**
- * Registra un nuevo usuario de tipo 'provider'.
- * @param {object} providerData
- * @returns {Promise<object>}
+ * Registra un nuevo 'provider'.
  */
 export function registerProvider(providerData) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/register/provider`, 'POST', providerData);
+  return apiClient(`${AUTH}/register/provider`, 'POST', providerData);
 }
 
 /**
- * Valida una cuenta a través de un token.
- * @param {string} token
- * @returns {Promise<object>}
+ * Valida cuenta por token.
  */
 export function validateAccount(token) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/validate/${token}`, 'GET');
+  return apiClient(`${AUTH}/validate/${token}`, 'GET');
 }
 
 /**
- * Solicita el restablecimiento de contraseña para un email.
- * @param {string} email
- * @returns {Promise<object>}
+ * Solicita inicio de flujo de reset por email.
+ * ⚠️ Asegúrate de tener este endpoint en backend. Si no existe, ajusta la ruta.
  */
 export function requestPasswordReset(email) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/forgot-password`, 'POST', { email });
+  return apiClient(`${AUTH}/forgot-password`, 'POST', { email });
 }
 
 /**
- * Restablece la contraseña usando un token.
- * @param {string} token
- * @param {string} password
- * @returns {Promise<object>}
+ * Establece nueva contraseña con token.
  */
 export function resetPasswordWithToken(token, password) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/reset-password/${token}`, 'POST', { password });
+  return apiClient(`${AUTH}/reset-password/${token}`, 'POST', { password });
 }
 
 /**
- * Autentica a un usuario usando un token de Google.
- * @param {string} token - El credential token de Google.
- * @returns {Promise<object>}
+ * Login con Google (credential token de Google).
+ * Backend debe devolver también refresh_token (ya lo tienes).
  */
 export function loginWithGoogle(token) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/oauth/google`, 'POST', { token });
+  return apiClient(`${AUTH}/oauth/google`, 'POST', { token });
 }
 
 /**
- * Genera una URL mágica de WhatsApp para un teléfono (requiere sesión de provider/staff/admin).
- * @param {string} phoneNumber - Número en formato E.164 (p. ej. +34600111222)
- * @returns {Promise<{url: string, user_id: number}>}
+ * Genera enlace/QR universal de WhatsApp (requiere sesión proveedor/staff/admin).
  */
 export function initWhatsappMagicLink(phoneNumber) {
-  return apiClient(`${AUTH_ENDPOINT_PREFIX}/whatsapp/init`, 'POST', {
+  return apiClient(`${AUTH}/whatsapp/init`, 'POST', {
     phone_number: phoneNumber,
   });
 }
 
 /**
- * Canjea un token mágico y crea sesión local.
- * Guarda accessToken en localStorage y devuelve datos básicos del usuario.
- * @param {string} token
- * @returns {Promise<{ user_id: number, role: string, access_token: string, profile_complete: boolean }>}
+ * Canjea token mágico y crea sesión local.
+ * Si el backend empieza a devolver refresh_token aquí también,
+ * lo persistimos de igual forma (queda listo).
  */
 export async function redeemMagicToken(token) {
   const res = await apiClient(
-    `${AUTH_ENDPOINT_PREFIX}/magic?token=${encodeURIComponent(token)}`,
+    `${AUTH}/magic?token=${encodeURIComponent(token)}`,
     'GET'
   );
 
-  const { access_token, user_id, role, profile_complete } = res || {};
-  if (access_token) {
-    try {
-      localStorage.setItem('accessToken', access_token);
-      localStorage.setItem('authUser', JSON.stringify({ user_id, role }));
-      localStorage.setItem('userRole', role);
-    } catch {
-      // Ignorar errores de storage (modo incógnito, etc.)
-    }
+  const { access_token, refresh_token, user_id, role, profile_complete } = res || {};
+
+  // Persistencia (compat con keys antiguas)
+  try {
+    if (access_token) setAccessToken(access_token);
+    if (refresh_token) setRefreshToken(refresh_token);
+
+    localStorage.setItem('authUser', JSON.stringify({ user_id, role }));
+    localStorage.setItem('userRole', role || '');
+  } catch {
+    // Ignorar errores de storage (modo incógnito, etc.)
   }
 
-  return { user_id, role, access_token, profile_complete: !!profile_complete };
+  return {
+    user_id,
+    role,
+    access_token: access_token || null,
+    refresh_token: refresh_token || null,
+    profile_complete: !!profile_complete,
+  };
 }
 
+/**
+ * Reenvía email de verificación.
+ */
 export function resendEmailVerification() {
-  return apiClient('/auth/email/resend-verification', 'POST');
+  return apiClient(`${AUTH}/email/resend-verification`, 'POST');
 }
