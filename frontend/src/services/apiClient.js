@@ -1,28 +1,62 @@
 // frontend/src/services/apiClient.js
-const BASE_URL = import.meta.env.VITE_API_BASE || 'http://localhost:5001/api';
+import { API_BASE, authFetch } from '../api/http';
 
-export async function apiClient(endpoint, method = 'GET', body = null) {
-  const token = localStorage.getItem('accessToken');
-
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
+/**
+ * Cliente genérico para el backend.
+ * - Usa authFetch (añade Authorization y reintenta con refresh_token si hay 401).
+ * - Soporta body JSON automáticamente salvo en GET.
+ * - Devuelve JSON si el servidor lo envía; si no, intenta texto. Para 204, null.
+ */
+export async function apiClient(endpoint, method = 'GET', body = null, extraHeaders = {}) {
   const finalEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  const res = await fetch(`${BASE_URL}${finalEndpoint}`, {
-    method,
-    headers,
-    body: method !== 'GET' && body ? JSON.stringify(body) : undefined,
+  const url = `${API_BASE}${finalEndpoint}`;
+
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    ...extraHeaders,
   });
 
-  // Algunas rutas pueden devolver 204 o no-JSON
-  const isJson = res.headers.get('content-type')?.includes('application/json');
-  const data = isJson ? await res.json().catch(() => null) : null;
+  const init = {
+    method,
+    headers,
+    credentials: 'include',
+  };
+
+  if (method.toUpperCase() !== 'GET' && body != null) {
+    init.body = JSON.stringify(body);
+  }
+
+  const res = await authFetch(url, init);
+
+  // 204 No Content
+  if (res.status === 204) return null;
+
+  const ctype = res.headers.get('content-type') || '';
+  let data = null;
+
+  if (ctype.includes('application/json')) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  } else {
+    // Si no es JSON, intenta devolver texto (útil para algunos endpoints simples)
+    try {
+      data = await res.text();
+    } catch {
+      data = null;
+    }
+  }
 
   if (!res.ok) {
-    const msg = data?.msg || `HTTP ${res.status} ${res.statusText}`;
+    const msg =
+      (data && (data.msg || data.error || data.detail)) ||
+      `${res.status} ${res.statusText}`;
     const err = new Error(msg);
     err.response = { status: res.status, data };
     throw err;
   }
+
   return data;
 }
