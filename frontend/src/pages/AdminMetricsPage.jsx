@@ -56,7 +56,9 @@ const readLSBool = (k, fallback) => {
 const writeLS = (k, v) => {
   try {
     localStorage.setItem(k, String(v));
-  } catch {}
+  } catch {
+    // storage no disponible (p. ej. modo incógnito)
+  }
 };
 
 // ===== TokenBadge aislado (no re-renderiza toda la página) =====
