@@ -1,35 +1,24 @@
 // frontend/src/utils/phoneMemory.js
-const KEY = "last_phone_e164";
-const DEFAULT_TTL_DAYS = 180;
 
-const nowSec = () => Math.floor(Date.now() / 1000);
-
-export function setLastPhone(value, ttlDays = DEFAULT_TTL_DAYS) {
-  if (!value) return;
-  try {
-    const rec = { value: String(value), ts: nowSec(), ttl: ttlDays * 24 * 3600 };
-    localStorage.setItem(KEY, JSON.stringify(rec));
-  } catch {}
-}
+const KEY = 'last_phone_number';
 
 export function getLastPhone() {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const rec = JSON.parse(raw);
-    if (!rec?.value) return null;
-    const ts = Number(rec.ts || 0);
-    const ttl = Number(rec.ttl || 0);
-    if (ttl > 0 && nowSec() - ts > ttl) {
-      localStorage.removeItem(KEY);
-      return null;
-    }
-    return rec.value;
-  } catch {
+    return localStorage.getItem(KEY);
+  } catch (e) {
+    console.debug('getLastPhone: storage not available', e);
     return null;
   }
 }
 
-export function clearLastPhone() {
-  try { localStorage.removeItem(KEY); } catch {}
+export function setLastPhone(phone) {
+  try {
+    if (!phone) {
+      localStorage.removeItem(KEY);
+      return;
+    }
+    localStorage.setItem(KEY, String(phone));
+  } catch (e) {
+    console.debug('setLastPhone: storage not available', e);
+  }
 }

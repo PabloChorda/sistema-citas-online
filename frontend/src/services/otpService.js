@@ -6,7 +6,6 @@ export async function requestPhoneOtp(phone_number) {
 }
 
 export async function verifyPhoneOtp(phone_number, code) {
-  // backend devuelve: { access_token, user_id, role, profile_complete }
   const res = await apiClient('/auth/phone/verify-otp', 'POST', { phone_number, code });
 
   const { access_token, user_id, role, profile_complete } = res || {};
@@ -15,7 +14,9 @@ export async function verifyPhoneOtp(phone_number, code) {
       localStorage.setItem('accessToken', access_token);
       localStorage.setItem('authUser', JSON.stringify({ user_id, role }));
       localStorage.setItem('userRole', role);
-    } catch (_) {}
+    } catch (e) {
+      console.debug('verifyPhoneOtp: storage not available', e);
+    }
   }
   return { access_token, user_id, role, profile_complete };
 }

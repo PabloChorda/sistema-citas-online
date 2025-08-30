@@ -53,7 +53,9 @@ function App() {
         // notifica cambios (el StorageEvent nativo no salta en la misma pestaña)
         window.dispatchEvent(new Event('storage'));
       }
-    } catch {}
+    } catch (e) {
+      console.debug('App init: storage not available', e);
+    }
   }, []);
 
   // escucha cambios de storage para mantener estado en sync
