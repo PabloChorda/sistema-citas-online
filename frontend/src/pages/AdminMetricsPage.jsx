@@ -1,5 +1,5 @@
 // src/pages/AdminMetricsPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   fetchWhatsAppMetrics,
   fetchOTPMetrics,
@@ -230,34 +230,18 @@ export default function AdminMetricsPage() {
   const [refreshSec, setRefreshSec] = useState(() => readLSInt(LS_KEYS.refreshSec, 60)); // 30/60/120
 
   // Persistir cuando cambien
-  useEffect(() => {
-    writeLS(LS_KEYS.rangeDays, rangeDays);
-  }, [rangeDays]);
-  useEffect(() => {
-    writeLS(LS_KEYS.whMinutes, whMinutes);
-  }, [whMinutes]);
-  useEffect(() => {
-    writeLS(LS_KEYS.whTop, whTop);
-  }, [whTop]);
-  useEffect(() => {
-    writeLS(LS_KEYS.autoRefresh, autoRefresh);
-  }, [autoRefresh]);
-  useEffect(() => {
-    writeLS(LS_KEYS.refreshSec, refreshSec);
-  }, [refreshSec]);
+  useEffect(() => { writeLS(LS_KEYS.rangeDays, rangeDays); }, [rangeDays]);
+  useEffect(() => { writeLS(LS_KEYS.whMinutes, whMinutes); }, [whMinutes]);
+  useEffect(() => { writeLS(LS_KEYS.whTop, whTop); }, [whTop]);
+  useEffect(() => { writeLS(LS_KEYS.autoRefresh, autoRefresh); }, [autoRefresh]);
+  useEffect(() => { writeLS(LS_KEYS.refreshSec, refreshSec); }, [refreshSec]);
 
   // Colores por serie (marca)
-  const waColors = {
-    created: "#2563eb", // blue-600
-    consumed: "#10b981", // emerald-500
-  };
-  const otpColors = {
-    issued: "#2563eb",
-    verified: "#10b981",
-    expired: "#ef4444", // red-500
-  };
+  const waColors = { created: "#2563eb", consumed: "#10b981" };
+  const otpColors = { issued: "#2563eb", verified: "#10b981", expired: "#ef4444" };
 
-  async function loadAll() {
+  // ⬇️ useCallback para evitar warning y re-creación innecesaria
+  const loadAll = useCallback(async () => {
     setErr("");
     setLoading(true);
     try {
@@ -276,21 +260,21 @@ export default function AdminMetricsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [rangeDays, whMinutes, whTop]);
 
+  // primera carga
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadAll]);
 
-  // Auto-refresh
+  // Auto-refresh (usa loadAll como dep)
   useEffect(() => {
     if (!autoRefresh) return;
     const id = setInterval(() => {
       loadAll();
     }, Math.max(10, refreshSec) * 1000);
     return () => clearInterval(id);
-  }, [autoRefresh, refreshSec, rangeDays, whMinutes, whTop]); // refresca si cambian ajustes
+  }, [autoRefresh, refreshSec, loadAll]);
 
   // Datos para gráficas
   const waChartData = useMemo(() => {
