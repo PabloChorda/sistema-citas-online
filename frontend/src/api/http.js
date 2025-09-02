@@ -12,11 +12,13 @@ const setAccessToken = (t) => {
   localStorage.setItem('access_token', t);
   localStorage.setItem('accessToken', t);
 };
+
 const setRefreshToken = (t) => {
   if (!t) return;
   localStorage.setItem('refresh_token', t);
   localStorage.setItem('refreshToken', t);
 };
+
 const clearTokens = () => {
   localStorage.removeItem('access_token');
   localStorage.removeItem('accessToken');
@@ -24,10 +26,25 @@ const clearTokens = () => {
   localStorage.removeItem('refreshToken');
 };
 
+/** Redirige a /login preservando la ruta actual en ?next= */
+function redirectToLogin() {
+  try {
+    const here = window.location.pathname + window.location.search;
+    const next = encodeURIComponent(here);
+    // Evita bucle si ya estás en /login
+    if (!window.location.pathname.startsWith('/login')) {
+      window.location.assign(`/login?next=${next}`);
+    }
+  } catch {
+    // noop
+  }
+}
+
 let refreshingPromise = null;
 
 async function refreshAccessToken() {
   if (refreshingPromise) return refreshingPromise;
+
   const rt = getRefreshToken();
   if (!rt) throw new Error('no_refresh_token');
 
@@ -57,29 +74,37 @@ async function refreshAccessToken() {
 }
 
 async function authFetch(input, init = {}) {
-  const url = typeof input === 'string' ? input : input.url;
-  const isRefreshCall = url.includes('/auth/refresh');
+  // Soporta tanto string como Request
+  const reqUrl =
+    typeof input === 'string'
+      ? input
+      : (input && typeof input === 'object' && 'url' in input ? input.url : '');
+  const isRefreshCall = reqUrl.includes('/auth/refresh');
 
   const headers = new Headers(init.headers || {});
   const at = getAccessToken();
   if (at) headers.set('Authorization', `Bearer ${at}`);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
 
-  const doFetch = (h) => fetch(input, { ...init, headers: h, credentials: init.credentials ?? 'include' });
+  const doFetch = (h) =>
+    fetch(input, { ...init, headers: h, credentials: init.credentials ?? 'include' });
 
   let res = await doFetch(headers);
 
+  // Si el access_token caducó y NO estamos en el endpoint de refresh, intenta renovar y reintentar 1 vez
   if (res.status === 401 && !isRefreshCall) {
     try {
-      await refreshAccessToken();
+      await refreshAccessToken(); // serializa intentos simultáneos
       const headers2 = new Headers(init.headers || {});
       const at2 = getAccessToken();
       if (at2) headers2.set('Authorization', `Bearer ${at2}`);
       if (!headers2.has('Content-Type')) headers2.set('Content-Type', 'application/json');
       res = await doFetch(headers2);
     } catch {
+      // Falló el refresh → limpiamos credenciales y redirigimos a login
       clearTokens();
-      return res;
+      redirectToLogin();
+      return res; // devolvemos el 401 original por si el caller quiere gestionarlo
     }
   }
 

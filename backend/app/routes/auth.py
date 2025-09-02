@@ -467,14 +467,12 @@ def phone_verify_otp():
         return jsonify({"msg": "phone_number y code requeridos"}), 400
     try:
         user = otp_verify(phone, code, purpose="login")
-
-        # ⬇️ ahora ambos tokens
         access_token = create_access_token(identity=str(user.user_id))
-        refresh_token = create_refresh_token(identity=str(user.user_id))
+        refresh_token = create_refresh_token(identity=str(user.user_id))  # 👈 nuevo
 
         return jsonify({
             "access_token": access_token,
-            "refresh_token": refresh_token,
+            "refresh_token": refresh_token,                  # 👈 nuevo
             "user_id": user.user_id,
             "role": user.role,
             "profile_complete": _profile_complete(user),
