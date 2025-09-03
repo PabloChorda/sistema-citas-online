@@ -468,11 +468,11 @@ def phone_verify_otp():
     try:
         user = otp_verify(phone, code, purpose="login")
         access_token = create_access_token(identity=str(user.user_id))
-        refresh_token = create_refresh_token(identity=str(user.user_id))  # 👈 nuevo
+        refresh_token = create_refresh_token(identity=str(user.user_id))
 
         return jsonify({
             "access_token": access_token,
-            "refresh_token": refresh_token,                  # 👈 nuevo
+            "refresh_token": refresh_token,
             "user_id": user.user_id,
             "role": user.role,
             "profile_complete": _profile_complete(user),
