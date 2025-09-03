@@ -4,6 +4,7 @@ import React from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Footer from './Footer';
+import TokenBadge from '../components/auth/TokenBadge';
 
 const PublicLayout = ({ token, handleLogout }) => {
   return (
@@ -11,13 +12,16 @@ const PublicLayout = ({ token, handleLogout }) => {
       <header className="bg-white shadow-sm sticky top-0 z-40">
         <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Logo o Nombre de la App */}
-            <Link
-              to="/"
-              className="text-2xl font-semibold text-brand-500 hover:text-brand-600 hover:underline"
-            >
-              CitaFácil
-            </Link>
+            {/* Marca + estado del token (solo dev) */}
+            <div className="flex items-center gap-2">
+              <Link
+                to="/"
+                className="text-2xl font-semibold text-brand-500 hover:text-brand-600 hover:underline"
+              >
+                CitaFácil
+              </Link>
+              <TokenBadge />
+            </div>
 
             {/* Botones Condicionales */}
             <div className="flex items-center space-x-4">
