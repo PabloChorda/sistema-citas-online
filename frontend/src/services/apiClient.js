@@ -1,5 +1,5 @@
-// frontend/src/services/apiClient.js
-import { API_BASE, authFetch } from '../api/http';
+// src/services/apiClient.js
+import { API_BASE, authFetch, clearTokens } from '../api/http';
 
 /**
  * Convierte un objeto de params en querystring.
@@ -28,7 +28,6 @@ function buildQuery(params = {}) {
  */
 function normalizeOptions(extra) {
   if (!extra) return { params: null, headers: {} };
-  // Si parece options shape nueva
   if (typeof extra === 'object' && ('params' in extra || 'headers' in extra)) {
     return {
       params: extra.params || null,
@@ -42,15 +41,10 @@ function normalizeOptions(extra) {
 /**
  * Cliente genérico para el backend.
  * - Usa authFetch (añade Authorization y reintenta con refresh_token si hay 401).
- * - Soporta body JSON automáticamente salvo en GET.
+ * - Soporta body JSON automáticamente salvo en GET y soporta FormData.
  * - Soporta params de query vía 4º argumento: apiClient('/path', 'GET', null, { params:{...} })
  * - Devuelve JSON si el servidor lo envía; si no, intenta texto. Para 204, null.
- *
- * @param {string} endpoint - Ruta relativa (con o sin '/')
- * @param {string} method   - 'GET' | 'POST' | 'PUT' | 'DELETE' ...
- * @param {any}    body     - objeto JSON o FormData (si FormData, no se fuerza Content-Type)
- * @param {object} extra    - (opcional) { params?: Record<string,any>, headers?: Record<string,string> }
- *                            // Compat: también puede ser directamente un objeto headers
+ * - Si tras el refresh persiste un 401, limpia tokens y redirige a /login?next=...
  */
 export async function apiClient(endpoint, method = 'GET', body = null, extra = undefined) {
   const { params, headers: extraHeaders } = normalizeOptions(extra);
@@ -60,7 +54,6 @@ export async function apiClient(endpoint, method = 'GET', body = null, extra = u
   const url = `${API_BASE}${cleanEndpoint}${query}`;
 
   const headers = new Headers({
-    // No fijamos Content-Type si el body es FormData
     ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(extraHeaders || {}),
   });
@@ -84,21 +77,23 @@ export async function apiClient(endpoint, method = 'GET', body = null, extra = u
   let data = null;
 
   if (ctype.includes('application/json')) {
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
-    }
+    try { data = await res.json(); } catch { data = null; }
   } else {
-    // Si no es JSON, intenta devolver texto (útil para endpoints simples)
-    try {
-      data = await res.text();
-    } catch {
-      data = null;
-    }
+    try { data = await res.text(); } catch { data = null; }
   }
 
   if (!res.ok) {
+    // Redirección a login si queda 401 después del intento de refresh
+    if (res.status === 401) {
+      const isAuthEndpoint = cleanEndpoint.startsWith('/auth') || cleanEndpoint.includes('/auth/');
+      const onLoginPage = window.location.pathname.startsWith('/login');
+      if (!isAuthEndpoint && !onLoginPage) {
+        try { clearTokens(); } catch {}
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.replace(`/login?next=${next}`);
+      }
+    }
+
     const msg =
       (data && (data.msg || data.error || data.detail)) ||
       `${res.status} ${res.statusText}`;

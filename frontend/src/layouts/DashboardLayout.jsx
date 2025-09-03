@@ -2,6 +2,7 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useCallback } from 'react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import TokenBadge from '../components/auth/TokenBadge';
 
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
@@ -184,25 +185,31 @@ export default function DashboardLayout({ handleLogout }) {
           background: '#111827',
           color: '#e5e7eb',
           padding: '16px 12px',
-          position: 'sticky',     // clave: sidebar fijo en scroll
+          position: 'sticky',
           top: 0,
-          height: '100dvh',       // ocupa alto completo
+          height: '100dvh',
           boxSizing: 'border-box',
-          overflow: 'hidden',     // el nav interno hará scroll
+          overflow: 'hidden',
         }}
       >
-        <h2 className="sidebar-brand" style={{ margin: 0 }}>
-          CitaFácil
-        </h2>
+        <div>
+          <h2 className="sidebar-brand" style={{ margin: 0 }}>
+            CitaFácil
+          </h2>
+          {/* TokenBadge (solo dev) */}
+          <div style={{ marginTop: 8 }}>
+            <TokenBadge />
+          </div>
+        </div>
 
         <nav
           className="sidebar-nav"
           style={{
             marginTop: 12,
             flex: 1,
-            overflowY: 'auto',      // el contenido del menú hace scroll
+            overflowY: 'auto',
             minHeight: 0,
-            paddingRight: 4,           // evitar “pegar” el scroll al borde
+            paddingRight: 4,
           }}
         >
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -219,7 +226,7 @@ export default function DashboardLayout({ handleLogout }) {
         <div
           className="sidebar-footer"
           style={{
-            position: 'sticky',     // clave: se “pega” al fondo visible
+            position: 'sticky',
             bottom: 0,
             background: '#111827',
             paddingTop: 10,
@@ -272,7 +279,7 @@ export default function DashboardLayout({ handleLogout }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                marginBottom: 16,
+                marginBottom: 8,
               }}
             >
               <h2 className="sidebar-brand" style={{ margin: 0 }}>
@@ -291,6 +298,11 @@ export default function DashboardLayout({ handleLogout }) {
               >
                 <XMarkIcon width={22} height={22} />
               </button>
+            </div>
+
+            {/* TokenBadge también en móvil */}
+            <div style={{ marginBottom: 8 }}>
+              <TokenBadge />
             </div>
 
             <nav className="sidebar-nav" style={{ flex: 1, overflowY: 'auto' }}>
