@@ -34,8 +34,12 @@ import Magic from './pages/Magic';
 import LoginPhone from './pages/LoginPhone';
 import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
 import AdminMetricsPage from "./pages/AdminMetricsPage";
+import useProactiveRefresh from './hooks/useProactiveRefresh';
 
 function App() {
+  // 🔁 Renovación silenciosa del access token antes de caducar
+  useProactiveRefresh({ leadSeconds: 120, minInterval: 60 });
+
   const [token, setToken] = useState(localStorage.getItem('accessToken') || localStorage.getItem('access_token'));
   const [role, setRole] = useState(localStorage.getItem('userRole'));
 
