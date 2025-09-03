@@ -16,13 +16,15 @@ export async function verifyPhoneOtp(phone_number, code) {
     if (refresh_token) setRefreshToken(refresh_token);
     localStorage.setItem('authUser', JSON.stringify({ user_id, role }));
     localStorage.setItem('userRole', role || '');
-  } catch (_) {}
+  } catch (e) {
+    // storage no disponible (modo incógnito, quotas, etc.)
+  }
 
   return {
     access_token: access_token || null,
     refresh_token: refresh_token || null,
     user_id,
     role,
-    profile_complete,
+    profile_complete: !!profile_complete,
   };
 }
