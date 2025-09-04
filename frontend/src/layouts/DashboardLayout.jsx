@@ -3,6 +3,7 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect, useState, useCallback } from 'react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import TokenBadge from '../components/auth/TokenBadge';
+import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
 
 export default function DashboardLayout({ handleLogout }) {
   const navigate = useNavigate();
@@ -350,6 +351,7 @@ export default function DashboardLayout({ handleLogout }) {
           overflowX: 'clip',
         }}
       >
+        <EmailVerificationBanner />
         <Outlet />
       </main>
     </div>
