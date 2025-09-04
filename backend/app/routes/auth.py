@@ -6,9 +6,10 @@ from flask_jwt_extended import (
     jwt_required,
     get_jwt_identity,
 )
-from .email_service import send_login_notification, send_account_validation_email
+from .email_service import send_login_notification, send_account_validation_email, send_password_reset_email
+import secrets
 from app.utils.tokens import generate_validation_token
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app import db
 from app.models import User, Provider
 from google.oauth2 import id_token
@@ -18,8 +19,6 @@ import os
 from urllib.parse import urlencode
 from app.services.magic_links import create_magic_link_for_phone, redeem_magic_token
 from app.services.otp_service import request_otp as otp_request, verify_otp as otp_verify
-
-# ⬇️ Rate limiting
 from app import limiter
 
 bp = Blueprint('auth', __name__)
@@ -37,6 +36,13 @@ def _key_phone_from_body():
     data = request.get_json(silent=True) or {}
     raw = (data.get("phone_number") or "").strip()
     return f"phone:{raw}" if raw else request.remote_addr
+
+# 🔒 key-func para limitar por email (body JSON)
+def _key_email_from_body():
+    data = request.get_json(silent=True) or {}
+    raw = (data.get("email") or "").strip().lower()
+    return f"email:{raw}" if raw else request.remote_addr
+
 
 @bp.route('/test-db', methods=['GET'])
 def api_test_db():
@@ -253,24 +259,44 @@ def validate_account(token):
 
 @bp.route('/reset-password/<token>', methods=['POST'])
 def reset_password(token):
-    from datetime import datetime
+    """
+    Establece una nueva contraseña si el token es válido y no ha expirado.
+    Body: { "password": "NuevaClave123!" }
+    """
+    data = request.get_json(silent=True) or {}
+    new_password = (data.get('password') or '').strip()
 
-    data = request.get_json()
-    new_password = data.get('password')
+    if len(new_password) < 8:
+        return jsonify({"msg": "La contraseña debe tener al menos 8 caracteres"}), 400
 
-    if not new_password:
-        return jsonify({"msg": "Nueva contraseña requerida"}), 400
+    try:
+        now = datetime.now(timezone.utc)
+        user = User.query.filter_by(reset_token=token).first()
 
-    user = User.query.filter_by(reset_token=token).first()
-    if not user or not user.reset_token_expiry or user.reset_token_expiry.replace(tzinfo=None) < datetime.utcnow():
-        return jsonify({"msg": "Token inválido o expirado"}), 400
+        if (not user) or (not user.reset_token_expiry):
+            return jsonify({"msg": "Token inválido o expirado"}), 400
 
-    user.set_password(new_password)
-    user.reset_token = None
-    user.reset_token_expiry = None
-    db.session.commit()
+        # Asegura comparación con aware datetimes
+        expiry = user.reset_token_expiry
+        if expiry.tzinfo is None:
+            # si por lo que sea estuviera naive en la BD, lo tratamos como UTC
+            expiry = expiry.replace(tzinfo=timezone.utc)
 
-    return jsonify({"msg": "Contraseña actualizada correctamente"}), 200
+        if expiry < now:
+            return jsonify({"msg": "Token inválido o expirado"}), 400
+
+        # OK: actualizamos contraseña y limpiamos token
+        user.set_password(new_password)
+        user.reset_token = None
+        user.reset_token_expiry = None
+        db.session.commit()
+
+        return jsonify({"msg": "Contraseña actualizada correctamente"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"reset_password error: {e}", exc_info=True)
+        return jsonify({"msg": "No se pudo actualizar la contraseña ahora"}), 500
 
 @bp.route('/oauth/google', methods=['POST'])
 @cross_origin(origins="http://localhost:5173", supports_credentials=True)
@@ -482,3 +508,52 @@ def phone_verify_otp():
     except Exception as e:
         current_app.logger.error(f"verify_otp error: {e}", exc_info=True)
         return jsonify({"msg": "No se pudo verificar el código"}), 500
+    
+@bp.route('/forgot-password', methods=['POST'])
+@limiter.limit("5 per hour")                   # por IP
+@limiter.limit("5 per hour", key_func=_key_email_from_body)  # por email
+def forgot_password():
+    """
+    Solicita restablecimiento de contraseña.
+    Siempre responde 200 para no filtrar existencia del email.
+    Si el usuario existe y su email es 'real' (no autogen), genera token, guarda y envía correo.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        email = (data.get("email") or "").strip().lower()
+        if not email:
+            # Devolvemos 200 igualmente para no revelar nada
+            return jsonify({"msg": "Si el correo existe, te hemos enviado instrucciones para restablecer la contraseña."}), 200
+
+        user = User.query.filter_by(email=email).first()
+
+        # No revelamos existencia. Solo actuamos si tiene un email "real".
+        if user and user.email and not user.email.endswith("@autogen.local"):
+            token = secrets.token_urlsafe(32)
+            ttl_min = 60
+            try:
+                ttl_min = int(os.getenv("PASSWORD_RESET_TTL_MINUTES", "60"))
+            except Exception:
+                pass
+
+            expires = datetime.now(timezone.utc) + timedelta(minutes=ttl_min)
+
+            # Guardamos token y expiración
+            user.reset_token = token
+            user.reset_token_expiry = expires
+            db.session.commit()
+
+            try:
+                ok = send_password_reset_email(user, token)
+                if not ok:
+                    current_app.logger.error(f"[forgot-password] Falló el envío de email a {email}")
+            except Exception as e:
+                current_app.logger.error(f"[forgot-password] Excepción enviando email a {email}: {e}", exc_info=True)
+
+        # Respuesta genérica
+        return jsonify({"msg": "Si el correo existe, te hemos enviado instrucciones para restablecer la contraseña."}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"[forgot-password] Error inesperado: {e}", exc_info=True)
+        # Aun así mantenemos respuesta genérica 200 (anti-enumeración)
+        return jsonify({"msg": "Si el correo existe, te hemos enviado instrucciones para restablecer la contraseña."}), 200
