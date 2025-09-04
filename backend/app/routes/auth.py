@@ -557,3 +557,57 @@ def forgot_password():
         current_app.logger.error(f"[forgot-password] Error inesperado: {e}", exc_info=True)
         # Aun así mantenemos respuesta genérica 200 (anti-enumeración)
         return jsonify({"msg": "Si el correo existe, te hemos enviado instrucciones para restablecer la contraseña."}), 200
+
+
+@bp.route('/change-password', methods=['POST'])
+@jwt_required()
+@limiter.limit("5 per 10 minutes")
+def change_password():
+    """
+    Permite a un usuario autenticado cambiar su contraseña.
+    Body: { "current_password": "...", "new_password": "..." }
+    - Si el usuario no tenía contraseña (ej. alta por Google/phone), current_password puede venir vacío.
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        current = (data.get('current_password') or '').strip()
+        new = (data.get('new_password') or '').strip()
+
+        if not new or len(new) < 8:
+            return jsonify({"msg": "La nueva contraseña debe tener al menos 8 caracteres"}), 400
+
+        # Identidad del token
+        try:
+            user_id = int(get_jwt_identity())
+        except (TypeError, ValueError):
+            return jsonify({"msg": "Identidad del token inválida"}), 422
+
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({"msg": "Usuario no encontrado"}), 404
+
+        # ¿Tenía contraseña previa?
+        had_password = True
+        try:
+            # Si tu modelo guarda hash vacío/None para usuarios sociales, check_password debe manejarlo
+            had_password = bool(user.password_hash)
+        except Exception:
+            # fallback conservador
+            had_password = True
+
+        if had_password:
+            # Requiere current_password correcto
+            if not current:
+                return jsonify({"msg": "Debes indicar tu contraseña actual"}), 400
+            if not user.check_password(current):
+                return jsonify({"msg": "La contraseña actual no es correcta"}), 400
+        # Si no tenía contraseña (alta por Google/phone), permitimos establecerla sin current
+
+        user.set_password(new)
+        db.session.commit()
+        return jsonify({"msg": "Contraseña actualizada correctamente"}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"change_password error: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({"msg": "No se pudo actualizar la contraseña"}), 500

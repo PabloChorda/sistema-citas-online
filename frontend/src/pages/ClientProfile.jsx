@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { getClientProfile } from '../services/clientService';
 import ClientInfoCard from '../components/ClientInfoCard';
+import ChangePasswordCard from '../components/auth/ChangePasswordCard';
 
 function ClientProfile() {
   const [profile, setProfile] = useState(null);
@@ -26,8 +27,21 @@ function ClientProfile() {
     setProfile(updatedUser);
   };
 
-  if (loading) return <div className="page-wrapper"><p>Cargando perfil...</p></div>;
-  if (error) return <div className="page-wrapper"><p className="error-message">{error}</p></div>;
+  if (loading) {
+    return (
+      <div className="page-wrapper">
+        <p>Cargando perfil...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page-wrapper">
+        <p className="error-message">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="page-wrapper">
@@ -37,8 +51,9 @@ function ClientProfile() {
             <h1>Mi Perfil</h1>
             <p>Hola, {profile.first_name || 'usuario'}. Aquí puedes gestionar tus datos.</p>
           </header>
-          <main className="profile-content">
+          <main className="profile-content space-y-6">
             <ClientInfoCard profile={profile} onProfileUpdate={handleProfileUpdate} />
+            <ChangePasswordCard />
           </main>
         </>
       ) : (

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { getProviderProfile } from '../services/providerService';
 import GeneralInfoCard from '../components/GeneralInfoCard.jsx';
 import TaxInfoCard from '../components/TaxInfoCard.jsx';
+import ChangePasswordCard from '../components/auth/ChangePasswordCard.jsx';
 
 function ProviderProfile() {
   const [profile, setProfile] = useState(null);
@@ -77,6 +78,11 @@ function ProviderProfile() {
         />
         {/* Info fiscal */}
         <TaxInfoCard profile={profile} />
+
+        {/* Cambiar contraseña - ocupa ancho completo */}
+        <div className="lg:col-span-2">
+          <ChangePasswordCard />
+        </div>
       </main>
     </div>
   );
