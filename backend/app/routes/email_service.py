@@ -2,9 +2,20 @@ from flask_mail import Message
 from flask import current_app, url_for, Blueprint
 from app import mail
 from zoneinfo import ZoneInfo
+import os
+from urllib.parse import urljoin
 
 
 bp = Blueprint('email', __name__, url_prefix='/email')
+
+def _frontend_url(path: str) -> str:
+    """
+    Construye una URL absoluta hacia el frontend usando FRONTEND_BASE_URL.
+    FRONTEND_BASE_URL por defecto: http://localhost:5173
+    """
+    base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
+    return f"{base.rstrip('/')}/{path.lstrip('/')}"
+
 
 def send_email(subject, recipients, body=None, html=None):
     """Función genérica para enviar correos."""
@@ -59,22 +70,56 @@ def send_account_validation_email(user, token):
     )
 
 def send_password_reset_email(user, token):
-    reset_link = f"http://localhost:5173/reset-password/{token}"
-    nombre = user.first_name or 'usuario'
+    """
+    Envía el correo de restablecimiento de contraseña con un enlace al frontend.
+    - FRONTEND_BASE_URL controla el host del enlace (por defecto http://localhost:5173)
+    - PASSWORD_RESET_TTL_MINUTES controla el texto del TTL mostrado (por defecto 60)
+    """
+    # TTL mostrado en el correo (informativo)
+    try:
+        ttl_min = int(os.getenv("PASSWORD_RESET_TTL_MINUTES", "60"))
+    except Exception:
+        ttl_min = 60
 
+    # Enlace al front
+    reset_link = _frontend_url(f"reset-password/{token}")
+    nombre = getattr(user, "first_name", None) or getattr(user, "email", None) or "usuario"
+
+    # Texto plano (fallback)
+    text_body = (
+        f"Hola {nombre},\n\n"
+        "Has solicitado restablecer tu contraseña de CitaFácil.\n"
+        f"Abre este enlace para crear una nueva contraseña (válido durante {ttl_min} minutos):\n\n"
+        f"{reset_link}\n\n"
+        "Si no fuiste tú, puedes ignorar este mensaje."
+    )
+
+    # HTML
     html_body = f"""
         <p>Hola <strong>{nombre}</strong>,</p>
-        <p>Solicitaste un restablecimiento de contraseña.</p>
-        <p>Haz clic en el siguiente enlace para cambiar tu contraseña:</p>
-        <p><a href="{reset_link}">Restablecer contraseña</a></p>
-        <p>Si no fuiste tú, puedes ignorar este mensaje.</p>
+        <p>Has solicitado restablecer tu contraseña de <strong>CitaFácil</strong>.</p>
+        <p>
+          <a href="{reset_link}" 
+             style="display:inline-block;background:#4f46e5;color:#fff;
+                    padding:10px 16px;border-radius:8px;text-decoration:none;">
+            Restablecer contraseña
+          </a>
+        </p>
+        <p style="color:#6b7280;font-size:13px;">
+          Este enlace es válido durante {ttl_min} minutos. 
+          Si no solicitaste este cambio, puedes ignorar este correo.
+        </p>
+        <p style="color:#9ca3af;font-size:12px;">
+          Si el botón no funciona, copia y pega esta URL en tu navegador:<br/>
+          <span style="word-break:break-all;">{reset_link}</span>
+        </p>
     """
 
     return send_email(
         subject="Restablece tu contraseña",
         recipients=[user.email],
-        html=html_body,
-        body=f"Hola {nombre}, restablece tu contraseña aquí: {reset_link}"
+        body=text_body,
+        html=html_body
     )
 
 def format_datetime_for_email(dt_utc, timezone_str):
