@@ -55,3 +55,7 @@ export async function redeemMagicToken(token) {
 export function resendEmailVerification() {
   return apiClient(`${AUTH}/email/resend-verification`, 'POST');
 }
+
+export function changePassword(current_password, new_password) {
+  return apiClient('/auth/change-password', 'POST', { current_password, new_password });
+}
