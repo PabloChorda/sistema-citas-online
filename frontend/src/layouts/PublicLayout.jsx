@@ -5,6 +5,7 @@ import { Link, Outlet } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Footer from './Footer';
 import TokenBadge from '../components/auth/TokenBadge';
+import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
 
 const PublicLayout = ({ token, handleLogout }) => {
   return (
@@ -51,6 +52,7 @@ const PublicLayout = ({ token, handleLogout }) => {
 
       {/* El main crece y empuja el footer abajo */}
       <main className="flex-grow">
+      {token ? <EmailVerificationBanner /> : null}
         <Outlet />
       </main>
 
