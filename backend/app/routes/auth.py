@@ -617,3 +617,28 @@ def change_password():
         current_app.logger.error(f"Error en change-password: {e}", exc_info=True)
         db.session.rollback()
         return jsonify({"msg": "Error interno del servidor"}), 500
+
+@bp.get("/me")
+@jwt_required()
+def me():
+    try:
+        uid = int(get_jwt_identity())
+    except (TypeError, ValueError):
+        return jsonify({"msg": "Identidad del token inválida"}), 422
+
+    user = User.query.get(uid)
+    if not user:
+        return jsonify({"msg": "Usuario no encontrado"}), 404
+
+    return jsonify({
+        "user_id": user.user_id,
+        "role": user.role,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email_verified": bool(getattr(user, "email_verified", False)),
+        "phone_number": getattr(user, "phone_number", None),
+        "phone_verified": bool(getattr(user, "phone_verified_at", None)),
+        "avatar_url": getattr(user, "avatar_url", None),
+        "is_active": getattr(user, "is_active", True),
+    }), 200
