@@ -561,22 +561,24 @@ def forgot_password():
 
 @bp.route('/change-password', methods=['POST'])
 @jwt_required()
-@limiter.limit("5 per 10 minutes")
+@limiter.limit("5 per minute")
 def change_password():
     """
-    Permite a un usuario autenticado cambiar su contraseña.
+    Cambia la contraseña del usuario autenticado.
     Body: { "current_password": "...", "new_password": "..." }
-    - Si el usuario no tenía contraseña (ej. alta por Google/phone), current_password puede venir vacío.
+    - Si el usuario ya tiene contraseña local, se exige current_password válida.
+    - Si el usuario NO tiene contraseña local (p.ej. alta por Google/Phone), no se exige current_password.
     """
     try:
         data = request.get_json(silent=True) or {}
-        current = (data.get('current_password') or '').strip()
-        new = (data.get('new_password') or '').strip()
+        current_password = (data.get("current_password") or "").strip()
+        new_password = (data.get("new_password") or "").strip()
 
-        if not new or len(new) < 8:
-            return jsonify({"msg": "La nueva contraseña debe tener al menos 8 caracteres"}), 400
+        # Validaciones básicas
+        if not new_password or len(new_password) < 8:
+            return jsonify({"msg": "La nueva contraseña debe tener al menos 8 caracteres."}), 400
 
-        # Identidad del token
+        # Identidad
         try:
             user_id = int(get_jwt_identity())
         except (TypeError, ValueError):
@@ -586,28 +588,32 @@ def change_password():
         if not user:
             return jsonify({"msg": "Usuario no encontrado"}), 404
 
-        # ¿Tenía contraseña previa?
-        had_password = True
-        try:
-            # Si tu modelo guarda hash vacío/None para usuarios sociales, check_password debe manejarlo
-            had_password = bool(user.password_hash)
-        except Exception:
-            # fallback conservador
-            had_password = True
+        # ¿Tiene contraseña local ya establecida?
+        has_local_password = getattr(user, "password_hash", None) not in (None, "")
 
-        if had_password:
-            # Requiere current_password correcto
-            if not current:
-                return jsonify({"msg": "Debes indicar tu contraseña actual"}), 400
-            if not user.check_password(current):
-                return jsonify({"msg": "La contraseña actual no es correcta"}), 400
-        # Si no tenía contraseña (alta por Google/phone), permitimos establecerla sin current
+        if has_local_password:
+            # Requerir current_password correcta
+            if not current_password:
+                return jsonify({"msg": "Debes indicar tu contraseña actual."}), 400
+            if not user.check_password(current_password):
+                return jsonify({"msg": "La contraseña actual no es correcta."}), 401
 
-        user.set_password(new)
+            # Evitar reutilizar la misma contraseña
+            if user.check_password(new_password):
+                return jsonify({"msg": "La nueva contraseña no puede ser igual a la actual."}), 400
+        else:
+            # Alta por Google/Phone: permitimos establecer una primera contraseña sin current_password
+            if current_password:
+                # Si mandan current_password y no hay hash, lo ignoramos (o podrías forzar error 400 si prefieres)
+                pass
+
+        # Establecer nueva contraseña
+        user.set_password(new_password)
         db.session.commit()
-        return jsonify({"msg": "Contraseña actualizada correctamente"}), 200
+
+        return jsonify({"msg": "Contraseña actualizada correctamente."}), 200
 
     except Exception as e:
-        current_app.logger.error(f"change_password error: {e}", exc_info=True)
+        current_app.logger.error(f"Error en change-password: {e}", exc_info=True)
         db.session.rollback()
-        return jsonify({"msg": "No se pudo actualizar la contraseña"}), 500
+        return jsonify({"msg": "Error interno del servidor"}), 500

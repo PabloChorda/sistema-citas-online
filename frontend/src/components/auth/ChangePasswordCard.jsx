@@ -1,4 +1,4 @@
-//src/components/auth/ChangePasswordCard.js
+//src/components/auth/ChangePasswordCard.jsx
 import { useState } from 'react';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
