@@ -1,13 +1,12 @@
 // src/App.jsx
 import { useState, useEffect } from 'react';
-// ❌ OJO: quitamos el import de ensureTokenSync para evitar el error
-// import { ensureTokenSync } from "./api/adminMetrics";
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
-import PublicLayout from './layouts/PublicLayout';
 import { Toaster } from 'react-hot-toast';
 
-import BrowsePage from './pages/BrowsePage';
+import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
+
+import BrowsePage from './pages/BrowsePage';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import RegisterProvider from './pages/RegisterProvider';
@@ -35,13 +34,15 @@ import LoginPhone from './pages/LoginPhone';
 import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
 import AdminMetricsPage from "./pages/AdminMetricsPage";
 import useProactiveRefresh from './hooks/useProactiveRefresh';
+import useAuthMe from './hooks/useAuthMe';
 
 function App() {
-  // 🔁 Renovación silenciosa del access token antes de caducar
-  useProactiveRefresh({ leadSeconds: 120, minInterval: 60 });
+  const [token, setToken] = useState(
+    localStorage.getItem('accessToken') || localStorage.getItem('access_token')
+  );
 
-  const [token, setToken] = useState(localStorage.getItem('accessToken') || localStorage.getItem('access_token'));
-  const [role, setRole] = useState(localStorage.getItem('userRole'));
+  // 👉 Nuevo: cargamos me desde /auth/me
+  const { me, loading: meLoading, refreshMe } = useAuthMe();
 
   // --- SHIM: sincroniza accessToken <-> access_token al montar ---
   useEffect(() => {
@@ -52,9 +53,7 @@ function App() {
       if (chosen) {
         if (t1 !== chosen) localStorage.setItem('accessToken', chosen);
         if (t2 !== chosen) localStorage.setItem('access_token', chosen);
-        // actualiza estado para que rutas protegidas funcionen sin recargar
         setToken(chosen);
-        // notifica cambios (el StorageEvent nativo no salta en la misma pestaña)
         window.dispatchEvent(new Event('storage'));
       }
     } catch (e) {
@@ -66,28 +65,25 @@ function App() {
   useEffect(() => {
     const handleStorageChange = () => {
       setToken(localStorage.getItem('accessToken') || localStorage.getItem('access_token'));
-      setRole(localStorage.getItem('userRole'));
+      // useAuthMe ya reacciona y recarga /auth/me
     };
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
-  
-  const handleLogin = (newToken, newRole) => {
+
+  const handleLogin = (newToken, _newRole) => {
     localStorage.setItem('accessToken', newToken);
-    localStorage.setItem('access_token', newToken); // normalizamos ambas
-    localStorage.setItem('userRole', newRole);
+    localStorage.setItem('access_token', newToken);
     setToken(newToken);
-    setRole(newRole);
-    // disparar storage para otros listeners internos
+    // dispara storage -> useAuthMe recarga /auth/me
     window.dispatchEvent(new Event('storage'));
   };
 
   const handleLogout = () => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('access_token');
-    localStorage.removeItem('userRole');
+    localStorage.removeItem('userRole'); // legacy
     setToken(null);
-    setRole(null);
     window.dispatchEvent(new Event('storage'));
   };
 
@@ -96,7 +92,7 @@ function App() {
       <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
       <Routes>
         {/* --- GRUPO 1: RUTAS PÚBLICAS --- */}
-        <Route element={<PublicLayout token={token} role={role} handleLogout={handleLogout} />}>
+        <Route element={<PublicLayout me={me} token={token} handleLogout={handleLogout} />}>
           <Route path="/" element={<BrowsePage />} />
           <Route path="/login-phone" element={<LoginPhone />} />
           <Route path="/magic" element={<Magic />} />
@@ -114,15 +110,23 @@ function App() {
         {/* --- GRUPO 3: RUTAS PROTEGIDAS --- */}
         <Route element={<ProtectedRoute token={token} />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
-          <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} />}>
-            {/* índice condicional */}
+          <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} me={me} />}>
+            {/* índice condicional según me.role */}
             <Route
               index
-              element={role === 'provider' ? <ProviderDashboard /> : <ClientDashboard />}
+              element={
+                meLoading ? (
+                  <div className="p-6 text-sm text-slate-500">Cargando…</div>
+                ) : me?.role === 'provider' ? (
+                  <ProviderDashboard />
+                ) : (
+                  <ClientDashboard />
+                )
+              }
             />
 
             {/* PROVEEDOR */}
-            {role === 'provider' && (
+            {me?.role === 'provider' && (
               <Route path="provider">
                 <Route path="profile" element={<ProviderProfile />} />
                 <Route path="establishments" element={<ManageEstablishments />} />
@@ -139,7 +143,7 @@ function App() {
             )}
 
             {/* CLIENTE */}
-            {role === 'client' && (
+            {me?.role === 'client' && (
               <Route path="client">
                 <Route path="profile" element={<ClientProfile />} />
                 <Route path="appointments" element={<ClientAppointments />} />
