@@ -7,13 +7,16 @@ import Footer from './Footer';
 import TokenBadge from '../components/auth/TokenBadge';
 import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
 
-const PublicLayout = ({ token, handleLogout }) => {
+const PublicLayout = ({ me, token, handleLogout }) => {
+  // Consideramos logueado si hay `me` o (por compat) si aún hay `token`
+  const isLoggedIn = Boolean(me?.user_id) || Boolean(token);
+
   return (
     <div className="bg-gray-100 min-h-screen flex flex-col">
       <header className="bg-white shadow-sm sticky top-0 z-40">
         <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Marca + estado del token (solo dev) */}
+            {/* Marca + estado del token (TokenBadge se auto-oculta fuera de dev) */}
             <div className="flex items-center gap-2">
               <Link
                 to="/"
@@ -26,7 +29,7 @@ const PublicLayout = ({ token, handleLogout }) => {
 
             {/* Botones Condicionales */}
             <div className="flex items-center space-x-4">
-              {token ? (
+              {isLoggedIn ? (
                 <>
                   <Button variant="outline" to="/dashboard">
                     Mi Panel
@@ -52,7 +55,9 @@ const PublicLayout = ({ token, handleLogout }) => {
 
       {/* El main crece y empuja el footer abajo */}
       <main className="flex-grow">
-      {token ? <EmailVerificationBanner /> : null}
+        {/* Muestra el banner solo si hay sesión;
+            el componente puede decidir ocultarse si me.email_verified === true */}
+        {isLoggedIn ? <EmailVerificationBanner me={me} /> : null}
         <Outlet />
       </main>
 

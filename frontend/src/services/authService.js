@@ -59,3 +59,6 @@ export function resendEmailVerification() {
 export function changePassword(current_password, new_password) {
   return apiClient('/auth/change-password', 'POST', { current_password, new_password });
 }
+export function fetchMe() {
+  return apiClient('/auth/me', 'GET');
+}

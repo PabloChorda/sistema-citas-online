@@ -5,10 +5,12 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import TokenBadge from '../components/auth/TokenBadge';
 import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
 
-export default function DashboardLayout({ handleLogout }) {
+export default function DashboardLayout({ handleLogout, me }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const userRole = localStorage.getItem('userRole');
+
+  // 🔁 Ahora el rol viene de `me`, no de localStorage
+  const userRole = me?.role || null;
 
   const [isMobile, setIsMobile] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
