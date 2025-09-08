@@ -1,10 +1,10 @@
 // src/App.jsx
-import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 import BrowsePage from './pages/BrowsePage';
 import Login from './pages/Login';
@@ -23,7 +23,6 @@ import BookingPage from './pages/BookingPage';
 import ConfirmBookingPage from './pages/ConfirmBookingPage';
 import BookingSuccessPage from './pages/BookingSuccessPage';
 import ClientAppointments from './pages/ClientAppointments';
-import ProtectedRoute from './components/auth/ProtectedRoute';
 import ProviderAppointments from './pages/ProviderAppointments';
 import ProviderDashboard from './pages/ProviderDashboard';
 import ManageStaff from './pages/ManageStaff';
@@ -33,66 +32,26 @@ import Magic from './pages/Magic';
 import LoginPhone from './pages/LoginPhone';
 import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
 import AdminMetricsPage from "./pages/AdminMetricsPage";
-import useProactiveRefresh from './hooks/useProactiveRefresh';
-import useAuthMe from './hooks/useAuthMe';
 
-function App() {
-  const [token, setToken] = useState(
-    localStorage.getItem('accessToken') || localStorage.getItem('access_token')
-  );
+import { useAuth } from './context/AuthContext';
 
-  // 👉 Nuevo: cargamos me desde /auth/me
-  const { me, loading: meLoading, refreshMe } = useAuthMe();
+// Decide índice de dashboard por rol
+function DashboardIndex() {
+  const { me } = useAuth();
+  if (me?.role === 'provider') return <ProviderDashboard />;
+  return <ClientDashboard />;
+}
 
-  // --- SHIM: sincroniza accessToken <-> access_token al montar ---
-  useEffect(() => {
-    try {
-      const t1 = localStorage.getItem('accessToken');
-      const t2 = localStorage.getItem('access_token');
-      const chosen = t1 || t2;
-      if (chosen) {
-        if (t1 !== chosen) localStorage.setItem('accessToken', chosen);
-        if (t2 !== chosen) localStorage.setItem('access_token', chosen);
-        setToken(chosen);
-        window.dispatchEvent(new Event('storage'));
-      }
-    } catch (e) {
-      console.debug('App init: storage not available', e);
-    }
-  }, []);
-
-  // escucha cambios de storage para mantener estado en sync
-  useEffect(() => {
-    const handleStorageChange = () => {
-      setToken(localStorage.getItem('accessToken') || localStorage.getItem('access_token'));
-      // useAuthMe ya reacciona y recarga /auth/me
-    };
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
-
-  const handleLogin = (newToken, _newRole) => {
-    localStorage.setItem('accessToken', newToken);
-    localStorage.setItem('access_token', newToken);
-    setToken(newToken);
-    // dispara storage -> useAuthMe recarga /auth/me
-    window.dispatchEvent(new Event('storage'));
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('userRole'); // legacy
-    setToken(null);
-    window.dispatchEvent(new Event('storage'));
-  };
+export default function App() {
+  const { isAuthenticated } = useAuth();
 
   return (
     <Router>
       <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+
       <Routes>
-        {/* --- GRUPO 1: RUTAS PÚBLICAS --- */}
-        <Route element={<PublicLayout me={me} token={token} handleLogout={handleLogout} />}>
+        {/* --- RUTAS PÚBLICAS --- */}
+        <Route element={<PublicLayout />}>
           <Route path="/" element={<BrowsePage />} />
           <Route path="/login-phone" element={<LoginPhone />} />
           <Route path="/magic" element={<Magic />} />
@@ -100,61 +59,54 @@ function App() {
           <Route path="/booking/success" element={<BookingSuccessPage />} />
         </Route>
 
-        {/* --- GRUPO 2: RUTAS DE AUTENTICACIÓN --- */}
-        <Route path="/login" element={!token ? <Login onLogin={handleLogin} /> : <Navigate to="/dashboard" />} />
-        <Route path="/register" element={!token ? <Register /> : <Navigate to="/dashboard" />} />
-        <Route path="/register/provider" element={!token ? <RegisterProvider /> : <Navigate to="/dashboard" />} />
+        {/* --- AUTENTICACIÓN --- */}
+        <Route
+          path="/login"
+          element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />}
+        />
+        <Route
+          path="/register"
+          element={!isAuthenticated ? <Register /> : <Navigate to="/dashboard" replace />}
+        />
+        <Route
+          path="/register/provider"
+          element={!isAuthenticated ? <RegisterProvider /> : <Navigate to="/dashboard" replace />}
+        />
         <Route path="/reset-password/:token" element={<NewPasswordForm />} />
         <Route path="/register/reset-password" element={<ResetPassword />} />
 
-        {/* --- GRUPO 3: RUTAS PROTEGIDAS --- */}
-        <Route element={<ProtectedRoute token={token} />}>
+        {/* --- RUTAS PROTEGIDAS --- */}
+        <Route element={<ProtectedRoute />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
-          <Route path="/dashboard" element={<DashboardLayout handleLogout={handleLogout} me={me} />}>
-            {/* índice condicional según me.role */}
-            <Route
-              index
-              element={
-                meLoading ? (
-                  <div className="p-6 text-sm text-slate-500">Cargando…</div>
-                ) : me?.role === 'provider' ? (
-                  <ProviderDashboard />
-                ) : (
-                  <ClientDashboard />
-                )
-              }
-            />
+          <Route path="/dashboard" element={<DashboardLayout />}>
+            <Route index element={<DashboardIndex />} />
 
             {/* PROVEEDOR */}
-            {me?.role === 'provider' && (
-              <Route path="provider">
-                <Route path="profile" element={<ProviderProfile />} />
-                <Route path="establishments" element={<ManageEstablishments />} />
-                <Route path="establishments/new" element={<CreateEstablishment />} />
-                <Route path="establishments/edit/:establishmentId" element={<EditEstablishment />} />
-                <Route path="services" element={<ManageServices />} />
-                <Route path="availability" element={<ManageAvailability />} />
-                <Route path="appointments" element={<ProviderAppointments />} />
-                <Route path="staff" element={<ManageStaff />} />
-                <Route path="staff/availability" element={<ManageStaffAvailability />} />
-                <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
-                <Route path="admin/metrics" element={<AdminMetricsPage />} />
-              </Route>
-            )}
+            <Route path="provider">
+              <Route path="profile" element={<ProviderProfile />} />
+              <Route path="establishments" element={<ManageEstablishments />} />
+              <Route path="establishments/new" element={<CreateEstablishment />} />
+              <Route path="establishments/edit/:establishmentId" element={<EditEstablishment />} />
+              <Route path="services" element={<ManageServices />} />
+              <Route path="availability" element={<ManageAvailability />} />
+              <Route path="appointments" element={<ProviderAppointments />} />
+              <Route path="staff" element={<ManageStaff />} />
+              <Route path="staff/availability" element={<ManageStaffAvailability />} />
+              <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
+              <Route path="admin/metrics" element={<AdminMetricsPage />} />
+            </Route>
 
             {/* CLIENTE */}
-            {me?.role === 'client' && (
-              <Route path="client">
-                <Route path="profile" element={<ClientProfile />} />
-                <Route path="appointments" element={<ClientAppointments />} />
-              </Route>
-            )}
+            <Route path="client">
+              <Route path="profile" element={<ClientProfile />} />
+              <Route path="appointments" element={<ClientAppointments />} />
+            </Route>
 
             <Route path="*" element={<NotFoundDashboard />} />
           </Route>
         </Route>
 
-        {/* RUTA COMODÍN FINAL */}
+        {/* COMODÍN */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </Router>
@@ -177,5 +129,3 @@ const NotFoundPage = () => (
     <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Volver a la página de inicio</Link>
   </div>
 );
-
-export default App;

@@ -4,13 +4,13 @@ import { useEffect, useState, useCallback } from 'react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import TokenBadge from '../components/auth/TokenBadge';
 import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
+import { useAuth } from '../context/AuthContext';
 
-export default function DashboardLayout({ handleLogout, me }) {
+export default function DashboardLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-
-  // 🔁 Ahora el rol viene de `me`, no de localStorage
-  const userRole = me?.role || null;
+  const { me, logout } = useAuth(); // ← usamos el contexto
+  const role = me?.role;
 
   const [isMobile, setIsMobile] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -43,10 +43,10 @@ export default function DashboardLayout({ handleLogout, me }) {
   }, [drawerOpen]);
 
   const onLogoutClick = useCallback(() => {
-    handleLogout();
-    navigate('/login');
+    logout();                // ← del contexto
+    navigate('/login', { replace: true });
     setDrawerOpen(false);
-  }, [handleLogout, navigate]);
+  }, [logout, navigate]);
 
   const getLinkStyle = (path) => {
     const isActivePath = (target) => {
@@ -79,7 +79,7 @@ export default function DashboardLayout({ handleLogout, me }) {
       transition: 'background-color 0.2s ease-in-out',
     };
 
-    if (userRole === 'provider') {
+    if (role === 'provider') {
       return (
         <>
           <li>
@@ -118,7 +118,7 @@ export default function DashboardLayout({ handleLogout, me }) {
       );
     }
 
-    if (userRole === 'client') {
+    if (role === 'client') {
       return (
         <>
           <li>
@@ -357,5 +357,6 @@ export default function DashboardLayout({ handleLogout, me }) {
         <Outlet />
       </main>
     </div>
-  );
+    );
 }
+
