@@ -32,7 +32,9 @@ import Magic from './pages/Magic';
 import LoginPhone from './pages/LoginPhone';
 import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
 import AdminMetricsPage from "./pages/AdminMetricsPage";
+import RoleRoute from './components/auth/RoleRoute';
 
+// 👇 usamos el AuthContext para me, meLoading, isAuthenticated y logout
 import { useAuth } from './context/AuthContext';
 
 // Decide índice de dashboard por rol
@@ -43,7 +45,13 @@ function DashboardIndex() {
 }
 
 export default function App() {
-  const { isAuthenticated } = useAuth();
+  const { me, meLoading, isAuthenticated, logout } = useAuth();
+
+  const handleLogout = () => {
+    try {
+      logout();
+    } catch {}
+  };
 
   return (
     <Router>
@@ -51,7 +59,7 @@ export default function App() {
 
       <Routes>
         {/* --- RUTAS PÚBLICAS --- */}
-        <Route element={<PublicLayout />}>
+        <Route element={<PublicLayout me={me} handleLogout={handleLogout} />}>
           <Route path="/" element={<BrowsePage />} />
           <Route path="/login-phone" element={<LoginPhone />} />
           <Route path="/magic" element={<Magic />} />
@@ -78,11 +86,11 @@ export default function App() {
         {/* --- RUTAS PROTEGIDAS --- */}
         <Route element={<ProtectedRoute />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
-          <Route path="/dashboard" element={<DashboardLayout />}>
+          <Route path="/dashboard" element={<DashboardLayout me={me} handleLogout={handleLogout} />}>
             <Route index element={<DashboardIndex />} />
 
             {/* PROVEEDOR */}
-            <Route path="provider">
+            <Route path="provider" element={<RoleRoute me={me} loading={meLoading} allow="provider" />}>
               <Route path="profile" element={<ProviderProfile />} />
               <Route path="establishments" element={<ManageEstablishments />} />
               <Route path="establishments/new" element={<CreateEstablishment />} />
@@ -97,7 +105,7 @@ export default function App() {
             </Route>
 
             {/* CLIENTE */}
-            <Route path="client">
+            <Route path="client" element={<RoleRoute me={me} loading={meLoading} allow="client" />}>
               <Route path="profile" element={<ClientProfile />} />
               <Route path="appointments" element={<ClientAppointments />} />
             </Route>
