@@ -1,22 +1,27 @@
 // frontend/src/layouts/PublicLayout.jsx
-
 import React from 'react';
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Footer from './Footer';
 import TokenBadge from '../components/auth/TokenBadge';
 import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
+import { useAuth } from '../context/AuthContext';
 
-const PublicLayout = ({ me, token, handleLogout }) => {
-  // Consideramos logueado si hay `me` o (por compat) si aún hay `token`
-  const isLoggedIn = Boolean(me?.user_id) || Boolean(token);
+export default function PublicLayout() {
+  const navigate = useNavigate();
+  const { isAuthenticated, logout } = useAuth();
+
+  const onLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="bg-gray-100 min-h-screen flex flex-col">
       <header className="bg-white shadow-sm sticky top-0 z-40">
         <nav className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            {/* Marca + estado del token (TokenBadge se auto-oculta fuera de dev) */}
+            {/* Marca + estado del token (solo dev) */}
             <div className="flex items-center gap-2">
               <Link
                 to="/"
@@ -29,12 +34,12 @@ const PublicLayout = ({ me, token, handleLogout }) => {
 
             {/* Botones Condicionales */}
             <div className="flex items-center space-x-4">
-              {isLoggedIn ? (
+              {isAuthenticated ? (
                 <>
                   <Button variant="outline" to="/dashboard">
                     Mi Panel
                   </Button>
-                  <Button variant="secondary" onClick={handleLogout}>
+                  <Button variant="secondary" onClick={onLogout}>
                     Cerrar Sesión
                   </Button>
                 </>
@@ -55,15 +60,11 @@ const PublicLayout = ({ me, token, handleLogout }) => {
 
       {/* El main crece y empuja el footer abajo */}
       <main className="flex-grow">
-        {/* Muestra el banner solo si hay sesión;
-            el componente puede decidir ocultarse si me.email_verified === true */}
-        {isLoggedIn ? <EmailVerificationBanner me={me} /> : null}
+        {isAuthenticated ? <EmailVerificationBanner /> : null}
         <Outlet />
       </main>
 
       <Footer />
     </div>
   );
-};
-
-export default PublicLayout;
+}

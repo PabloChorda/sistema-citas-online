@@ -126,6 +126,8 @@ const NotFoundPage = () => (
   <div style={{ textAlign: 'center', paddingTop: '5rem', color: '#333' }}>
     <h1>404 - Página No Encontrada</h1>
     <p>Lo sentimos, la página que estás buscando no existe.</p>
-    <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Volver a la página de inicio</Link>
+    <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>
+      Volver a la página de inicio
+    </Link>
   </div>
 );
