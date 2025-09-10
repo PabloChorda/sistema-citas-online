@@ -5,12 +5,17 @@ import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import TokenBadge from '../components/auth/TokenBadge';
 import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
 import { useAuth } from '../context/AuthContext';
+import ProviderOnboardingBanner from '../components/provider/ProviderOnboardingBanner';
 
-export default function DashboardLayout() {
+export default function DashboardLayout({ me: meProp, handleLogout }) {
+  // del contexto sacamos me (fallback) y logout
+  const { me: meCtx, logout } = useAuth();
+  // prioriza la prop si viene desde App; si no, usa el contexto
+  const me = meProp ?? meCtx;
+  const role = me?.role;
+
   const navigate = useNavigate();
   const location = useLocation();
-  const { me, logout } = useAuth(); // ← usamos el contexto
-  const role = me?.role;
 
   const [isMobile, setIsMobile] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -43,10 +48,15 @@ export default function DashboardLayout() {
   }, [drawerOpen]);
 
   const onLogoutClick = useCallback(() => {
-    logout();                // ← del contexto
-    navigate('/login', { replace: true });
-    setDrawerOpen(false);
-  }, [logout, navigate]);
+    // si te pasan handleLogout úsalo; si no, usa logout del contexto
+    try {
+      if (handleLogout) handleLogout();
+      else logout();
+    } finally {
+      navigate('/login');
+      setDrawerOpen(false);
+    }
+  }, [handleLogout, logout, navigate]);
 
   const getLinkStyle = (path) => {
     const isActivePath = (target) => {
@@ -354,6 +364,7 @@ export default function DashboardLayout() {
         }}
       >
         <EmailVerificationBanner />
+        <ProviderOnboardingBanner />
         <Outlet />
       </main>
     </div>
