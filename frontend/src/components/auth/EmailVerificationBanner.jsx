@@ -1,53 +1,31 @@
-// src/components/auth/EmailVerificationBanner.jsx
-import { useEffect, useState } from 'react';
+// frontend/src/components/auth/EmailVerificationBanner.jsx
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import { useAuth } from '../../context/AuthContext';
 import { resendEmailVerification } from '../../services/authService';
-import { getClientProfile } from '../../services/clientService';
-import { getProviderProfile } from '../../services/providerService';
 
 export default function EmailVerificationBanner() {
+  const { isAuthenticated, me, meLoading, refreshMe } = useAuth();
   const [visible, setVisible] = useState(false);
-  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // Carga de estado (una sola vez): si email existe y no está verificado -> mostrar banner
+  const email = me?.email ?? '';
+  const autogen = useMemo(() => email && email.endsWith('@autogen.local'), [email]);
+
+  // Decidir visibilidad según sesión, verificación y “Ocultar hasta…”
   useEffect(() => {
+    if (meLoading) return;
     const dismissedUntil = Number(sessionStorage.getItem('email_verif_banner_hide_until') || '0');
-    if (Date.now() < dismissedUntil) return;
+    const shouldShow = isAuthenticated && !me?.email_verified && !autogen && Date.now() >= dismissedUntil;
+    setVisible(!!shouldShow);
+  }, [isAuthenticated, me?.email_verified, autogen, meLoading]);
 
-    const role = localStorage.getItem('userRole');
-    const load = async () => {
-      try {
-        let prof;
-        if (role === 'client') {
-          prof = await getClientProfile();
-        } else if (role === 'provider') {
-          prof = await getProviderProfile();
-        } else {
-          return; // sin rol, nada que mostrar
-        }
-
-        // Normalizamos posibles formas del objeto
-        const e = prof?.email || prof?.user?.email || '';
-        const verified = (prof?.email_verified ?? prof?.user?.email_verified) || false;
-        const autogen = e && e.endsWith('@autogen.local');
-
-        setEmail(e);
-        setVisible(Boolean(e) && !autogen && !verified);
-      } catch {
-        // silencio: si no podemos cargar perfil, no molestamos
-      }
-    };
-
-    load();
-  }, []);
-
-  // Cuenta atrás para el botón "Reenviar"
+  // Cuenta atrás para evitar spam de reenvíos
   useEffect(() => {
     if (!cooldown) return;
     const id = setInterval(() => {
-      setCooldown(s => (s <= 1 ? (clearInterval(id), 0) : s - 1));
+      setCooldown((s) => (s <= 1 ? (clearInterval(id), 0) : s - 1));
     }, 1000);
     return () => clearInterval(id);
   }, [cooldown]);
@@ -57,9 +35,17 @@ export default function EmailVerificationBanner() {
     try {
       await resendEmailVerification();
       toast.success('Te hemos enviado un email de verificación.');
-      setCooldown(30); // evita spam durante 30s
+      setCooldown(30);
     } catch (e) {
-      toast.error(e?.message || 'No se pudo enviar el correo ahora');
+      const msg = e?.message || '';
+      // Si el backend dice que ya está verificado, refrescamos y ocultamos
+      if (/ya est[áa] verificado/i.test(msg)) {
+        try { await refreshMe(); } catch {}
+        setVisible(false);
+        toast.success('Tu correo ya estaba verificado.');
+      } else {
+        toast.error(msg || 'No se pudo enviar el correo ahora');
+      }
     } finally {
       setLoading(false);
     }
@@ -71,7 +57,7 @@ export default function EmailVerificationBanner() {
     setVisible(false);
   };
 
-  if (!visible) return null;
+  if (meLoading || !visible) return null;
 
   return (
     <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 text-amber-900 p-3">
@@ -79,7 +65,7 @@ export default function EmailVerificationBanner() {
         <div>
           <div className="font-medium">Verifica tu correo</div>
           <div className="text-sm">
-            Tu correo <span className="font-mono">{email}</span> aún no está verificado.
+            Tu correo <span className="font-mono">{email || '—'}</span> aún no está verificado.
             Revisa tu bandeja de entrada o solicita un nuevo email.
           </div>
         </div>

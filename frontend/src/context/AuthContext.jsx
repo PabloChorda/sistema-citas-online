@@ -1,80 +1,98 @@
 // frontend/src/context/AuthContext.jsx
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { apiClient } from '../services/apiClient';
-import { getAccessToken, clearTokens } from '../api/http';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { apiGetJson, clearTokens, getAccessToken, setAccessToken, setRefreshToken } from '../api/http';
 
-const AuthCtx = createContext(null);
+const AuthCtx = createContext({
+  me: null,
+  meLoading: false,
+  isAuthenticated: false,
+  login: async (_tokens) => {},   // 👈 añadido
+  refreshMe: async () => {},
+  logout: () => {},
+});
 
 export function AuthProvider({ children }) {
   const [me, setMe] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const inFlight = useRef(false);
+  const [meLoading, setMeLoading] = useState(false);
 
-  async function fetchMe() {
+  const refreshMe = useCallback(async () => {
     const at = getAccessToken();
     if (!at) {
       setMe(null);
-      setLoading(false);
-      setError('');
-      return;
+      setMeLoading(false);
+      return null;
     }
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setLoading(true);
-    setError('');
+    setMeLoading(true);
     try {
-      const data = await apiClient('/auth/me', 'GET');
-      setMe(data ?? null);
-    } catch (e) {
-      // Si /me falla (p. ej. 401 tras refresh), considera sesión caída
+      const data = await apiGetJson('/auth/me');
+      setMe(data);
+      return data;
+    } catch {
+      // Si hay 401 u otro error, dejamos me a null
       setMe(null);
-      setError(e?.message || 'No se pudo obtener el perfil');
+      return null;
     } finally {
-      setLoading(false);
-      inFlight.current = false;
+      setMeLoading(false);
     }
-  }
-
-  // 1) cargar al montar
-  useEffect(() => {
-    fetchMe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 2) reintentar cuando cambie el access_token (mismo tab)
+  // 👇 Nuevo: persistir tokens y actualizar `me`
+  const login = useCallback(
+    async ({ access_token, refresh_token }) => {
+      // Persistimos tokens de forma unificada
+      if (access_token) setAccessToken(access_token);
+      if (refresh_token) setRefreshToken(refresh_token);
+
+      // Notificamos a la app (otros listeners pueden reaccionar)
+      try {
+        window.dispatchEvent(new Event('storage'));
+      } catch {}
+
+      // Traemos el perfil actual (me) y lo devolvemos
+      return await refreshMe();
+    },
+    [refreshMe]
+  );
+
+  const logout = useCallback(() => {
+    clearTokens();
+    setMe(null);
+    try {
+      // forzar reacciones en la misma pestaña
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
+  }, []);
+
+  // ¿Hay sesión? (se evalúa en cada render)
+  const isAuthenticated = !!getAccessToken();
+
+  // Cargar /auth/me al montar
   useEffect(() => {
-    const onStorage = (ev) => {
-      if (ev.key === 'access_token' || ev.key === 'accessToken') {
-        fetchMe();
-      }
-    };
+    refreshMe();
+  }, [refreshMe]);
+
+  // Re-cargar /auth/me cuando cambien los tokens (otros puntos disparan el evento)
+  useEffect(() => {
+    const onStorage = () => { refreshMe(); };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshMe]);
 
-  const logout = () => {
-    try { clearTokens(); } catch {}
-    setMe(null);
-    setError('');
-  };
-
-  const value = {
-    me,
-    setMe,
-    loading,
-    error,
-    isAuthenticated: Boolean(me?.user_id),
-    logout,
-    reload: fetchMe,
-  };
+  const value = useMemo(
+    () => ({ me, meLoading, isAuthenticated, login, refreshMe, logout }),
+    [me, meLoading, isAuthenticated, login, refreshMe, logout]
+  );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthCtx);
-  if (!ctx) throw new Error('useAuth must be used within <AuthProvider>');
-  return ctx;
+  return useContext(AuthCtx);
 }

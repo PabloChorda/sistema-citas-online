@@ -1,15 +1,14 @@
-// frontend/src/layouts/PublicLayout.jsx
-
 import React from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Footer from './Footer';
 import TokenBadge from '../components/auth/TokenBadge';
 import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
+import { useAuth } from '../context/AuthContext';
 
-const PublicLayout = ({ me, token, handleLogout }) => {
-  // Consideramos logueado si hay `me` o (por compat) si aún hay `token`
-  const isLoggedIn = Boolean(me?.user_id) || Boolean(token);
+const PublicLayout = ({ handleLogout }) => {
+  const { isAuthenticated, logout } = useAuth();
+  const doLogout = handleLogout || logout;
 
   return (
     <div className="bg-gray-100 min-h-screen flex flex-col">
@@ -29,12 +28,12 @@ const PublicLayout = ({ me, token, handleLogout }) => {
 
             {/* Botones Condicionales */}
             <div className="flex items-center space-x-4">
-              {isLoggedIn ? (
+              {isAuthenticated ? (
                 <>
                   <Button variant="outline" to="/dashboard">
                     Mi Panel
                   </Button>
-                  <Button variant="secondary" onClick={handleLogout}>
+                  <Button variant="secondary" onClick={doLogout}>
                     Cerrar Sesión
                   </Button>
                 </>
@@ -55,9 +54,8 @@ const PublicLayout = ({ me, token, handleLogout }) => {
 
       {/* El main crece y empuja el footer abajo */}
       <main className="flex-grow">
-        {/* Muestra el banner solo si hay sesión;
-            el componente puede decidir ocultarse si me.email_verified === true */}
-        {isLoggedIn ? <EmailVerificationBanner me={me} /> : null}
+        {/* El banner usa AuthContext por dentro y se oculta solo si el email ya está verificado */}
+        {isAuthenticated ? <EmailVerificationBanner /> : null}
         <Outlet />
       </main>
 

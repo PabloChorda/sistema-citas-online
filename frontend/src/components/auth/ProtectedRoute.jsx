@@ -6,7 +6,6 @@ export default function ProtectedRoute() {
   const { isAuthenticated, meLoading } = useAuth();
   const location = useLocation();
 
-  // Mientras resolvemos /auth/me, enseñamos un pequeño loader
   if (meLoading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
@@ -15,7 +14,6 @@ export default function ProtectedRoute() {
     );
   }
 
-  // Si no está autenticado, redirigimos a login con next
   if (!isAuthenticated) {
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/login?next=${next}`} replace />;
