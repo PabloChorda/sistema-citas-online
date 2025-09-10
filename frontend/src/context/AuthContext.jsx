@@ -1,19 +1,12 @@
 // frontend/src/context/AuthContext.jsx
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
-import { apiGetJson, clearTokens, getAccessToken, setAccessToken, setRefreshToken } from '../api/http';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { apiGetJson, clearTokens, getAccessToken } from '../api/http';
 
 const AuthCtx = createContext({
   me: null,
   meLoading: false,
   isAuthenticated: false,
-  login: async (_tokens) => {},   // 👈 añadido
+  bootstrapping: true,
   refreshMe: async () => {},
   logout: () => {},
 });
@@ -21,12 +14,12 @@ const AuthCtx = createContext({
 export function AuthProvider({ children }) {
   const [me, setMe] = useState(null);
   const [meLoading, setMeLoading] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(true);
 
   const refreshMe = useCallback(async () => {
     const at = getAccessToken();
     if (!at) {
       setMe(null);
-      setMeLoading(false);
       return null;
     }
     setMeLoading(true);
@@ -35,7 +28,6 @@ export function AuthProvider({ children }) {
       setMe(data);
       return data;
     } catch {
-      // Si hay 401 u otro error, dejamos me a null
       setMe(null);
       return null;
     } finally {
@@ -43,42 +35,44 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // 👇 Nuevo: persistir tokens y actualizar `me`
-  const login = useCallback(
-    async ({ access_token, refresh_token }) => {
-      // Persistimos tokens de forma unificada
-      if (access_token) setAccessToken(access_token);
-      if (refresh_token) setRefreshToken(refresh_token);
-
-      // Notificamos a la app (otros listeners pueden reaccionar)
-      try {
-        window.dispatchEvent(new Event('storage'));
-      } catch {}
-
-      // Traemos el perfil actual (me) y lo devolvemos
-      return await refreshMe();
-    },
-    [refreshMe]
-  );
-
   const logout = useCallback(() => {
     clearTokens();
     setMe(null);
     try {
-      // forzar reacciones en la misma pestaña
       window.dispatchEvent(new Event('storage'));
     } catch {}
   }, []);
 
-  // ¿Hay sesión? (se evalúa en cada render)
   const isAuthenticated = !!getAccessToken();
 
-  // Cargar /auth/me al montar
+  // Primera carga con splash
   useEffect(() => {
-    refreshMe();
+    let alive = true;
+    const started = Date.now();
+    const MIN = 400; // ms
+
+    (async () => {
+      try {
+        await refreshMe();
+      } finally {
+        if (!alive) return;
+        const elapsed = Date.now() - started;
+        const wait = Math.max(0, MIN - elapsed);
+        setTimeout(() => {
+          if (alive) setBootstrapping(false);
+        }, wait);
+      }
+    })();
+
+    // Fallback duro por si algo se cuelga (3s)
+    const hard = setTimeout(() => alive && setBootstrapping(false), 3000);
+    return () => {
+      alive = false;
+      clearTimeout(hard);
+    };
   }, [refreshMe]);
 
-  // Re-cargar /auth/me cuando cambien los tokens (otros puntos disparan el evento)
+  // Re-cargar /auth/me cuando cambien tokens (otros puntos disparan 'storage')
   useEffect(() => {
     const onStorage = () => { refreshMe(); };
     window.addEventListener('storage', onStorage);
@@ -86,8 +80,8 @@ export function AuthProvider({ children }) {
   }, [refreshMe]);
 
   const value = useMemo(
-    () => ({ me, meLoading, isAuthenticated, login, refreshMe, logout }),
-    [me, meLoading, isAuthenticated, login, refreshMe, logout]
+    () => ({ me, meLoading, isAuthenticated, bootstrapping, refreshMe, logout }),
+    [me, meLoading, isAuthenticated, bootstrapping, refreshMe, logout]
   );
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

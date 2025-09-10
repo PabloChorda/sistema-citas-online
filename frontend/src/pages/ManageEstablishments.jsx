@@ -1,6 +1,5 @@
 // frontend/src/pages/ManageEstablishments.jsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { getProviderProfile } from '../services/providerService';
@@ -90,26 +89,39 @@ const EstablishmentCard = ({ establishment, onDelete }) => (
   </div>
 );
 
-const ManageEstablishments = () => {
-  const [establishments, setEstablishments] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+export default function ManageEstablishments() {
+  // null = aún no cargado; [] = cargado sin datos
+  const [establishments, setEstablishments] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const fetchProfileAndEstablishments = async () => {
+  // Evita flash: solo spinner grande en la PRIMERA carga
+  const firstLoadRef = useRef(true);
+  // Retardo del spinner para evitar parpadeos en respuestas rápidas
+  const [showLoader, setShowLoader] = useState(false);
+
+  async function fetchProfileAndEstablishments() {
+    setError('');
+    setLoading(true);
+    const timer = setTimeout(() => setShowLoader(true), 220);
     try {
       const profile = await getProviderProfile();
-      setEstablishments(profile.establishments || []);
-    } catch (err) {
+      const list = profile?.establishments || [];
+      setEstablishments(list);
+    } catch (e) {
       setError('No se pudo cargar la información de los establecimientos.');
-      console.error(err);
+      console.error(e);
     } finally {
+      clearTimeout(timer);
+      setShowLoader(false);
       setLoading(false);
+      firstLoadRef.current = false;
     }
-  };
+  }
 
   useEffect(() => {
-    setLoading(true);
     fetchProfileAndEstablishments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleDeleteEstablishment = async (establishmentId) => {
@@ -121,15 +133,19 @@ const ManageEstablishments = () => {
       try {
         await deleteEstablishment(establishmentId);
         toast.success('Establecimiento eliminado con éxito.');
+        // Recargamos: al no ser primera carga, solo aparecerá la barrita sutil
         await fetchProfileAndEstablishments();
       } catch (err) {
-        toast.error(err.message || 'Error al eliminar el establecimiento.');
+        toast.error(err?.message || 'Error al eliminar el establecimiento.');
         console.error(err);
       }
     }
   };
 
-  if (loading) {
+  // ---- UI ----
+
+  // 1) PRIMERA CARGA: si sigue cargando y pasó el retardo → spinner grande
+  if (firstLoadRef.current && loading && showLoader) {
     return (
       <div className="page-wrapper">
         <div className="profile-card">
@@ -139,6 +155,7 @@ const ManageEstablishments = () => {
     );
   }
 
+  // 2) ERRORES
   if (error) {
     return (
       <div className="page-wrapper">
@@ -166,7 +183,12 @@ const ManageEstablishments = () => {
         </Link>
       </header>
 
-      {establishments.length > 0 ? (
+      {/* 3) RECARGAS: barrita sutil mientras actualiza, manteniendo la lista visible */}
+      {loading && !firstLoadRef.current && (
+        <div className="h-0.5 w-full bg-gradient-to-r from-indigo-500 via-indigo-400 to-indigo-600 animate-pulse rounded-full mb-2" />
+      )}
+
+      {Array.isArray(establishments) && establishments.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
           {establishments.map((est) => (
             <EstablishmentCard
@@ -178,9 +200,7 @@ const ManageEstablishments = () => {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 shadow-card p-8 text-center">
-          <p className="text-gray-600 mb-4">
-            Aún no tienes ningún establecimiento registrado.
-          </p>
+          <p className="text-gray-600 mb-4">Aún no tienes ningún establecimiento registrado.</p>
           <Link
             to="/dashboard/provider/establishments/new"
             className="inline-flex items-center justify-center rounded-lg border border-transparent bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
@@ -192,6 +212,4 @@ const ManageEstablishments = () => {
       )}
     </div>
   );
-};
-
-export default ManageEstablishments;
+}
