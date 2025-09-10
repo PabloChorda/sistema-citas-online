@@ -1,11 +1,20 @@
-// frontend/src/pages/RegisterProvider.jsx
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { registerProvider } from '../services/authService';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+
+// Solo rutas internas
+function getSafeNext(location) {
+  const sp = new URLSearchParams(location.search);
+  const candidate = sp.get('next');
+  if (typeof candidate === 'string' && candidate.startsWith('/') && !candidate.startsWith('//')) {
+    return candidate;
+  }
+  return '/dashboard';
+}
 
 function RegisterProvider() {
   const [formData, setFormData] = useState({
@@ -26,7 +35,9 @@ function RegisterProvider() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleChange = (e) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -51,11 +62,12 @@ function RegisterProvider() {
       };
 
       const data = await registerProvider(apiData);
-      toast.success(data.msg || '¡Proveedor registrado! Revisa tu email para validar la cuenta.');
+      toast.success(data?.msg || '¡Proveedor registrado! Revisa tu email para validar la cuenta.');
 
-      setTimeout(() => navigate('/login'), 2000);
+      const next = getSafeNext(location);
+      navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true });
     } catch (err) {
-      toast.error(err.message || 'Ocurrió un error durante el registro.');
+      toast.error(err?.message || 'Ocurrió un error durante el registro.');
     } finally {
       setIsSubmitting(false);
     }
@@ -63,13 +75,13 @@ function RegisterProvider() {
 
   return (
     <div className="auth-page">
-      <div className="login-container register-provider-container">
-        <header className="login-header">
-          <h1>Registro para Proveedores</h1>
-          <p>Crea tu perfil y empieza a gestionar tus citas</p>
-        </header>
+      <div className="login-container">
+        <main className="login-box max-w-3xl">
+          <header className="login-header">
+            <h1>Registro para Proveedores</h1>
+            <p>Crea tu perfil y empieza a gestionar tus citas</p>
+          </header>
 
-        <main className="login-box max-w-3xl w-full mx-auto p-8 rounded-lg shadow-lg bg-white">
           <form onSubmit={handleSubmit} className="space-y-8 text-left">
             {/* Datos del Negocio */}
             <fieldset className="bg-gray-50 p-6 rounded-lg border border-gray-200 space-y-4">
@@ -147,7 +159,7 @@ function RegisterProvider() {
               />
             </fieldset>
 
-            {/* Datos de Contacto */}
+            {/* Datos de Contacto y Cuenta */}
             <fieldset className="bg-gray-50 p-6 rounded-lg border border-gray-200 space-y-4">
               <legend className="text-lg font-semibold text-gray-800">Datos de Contacto y Cuenta</legend>
 
@@ -176,11 +188,7 @@ function RegisterProvider() {
                   aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                 >
-                  {showPassword ? (
-                    <EyeSlashIcon className="h-5 w-5" />
-                  ) : (
-                    <EyeIcon className="h-5 w-5" />
-                  )}
+                  {showPassword ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
                 </button>
               </div>
 
@@ -220,9 +228,11 @@ function RegisterProvider() {
               </div>
             </fieldset>
 
-            <Button type="submit" variant="secondary" disabled={isSubmitting}>
-              {isSubmitting ? 'Creando cuenta…' : 'Crear cuenta de proveedor'}
-            </Button>
+            <div className="pt-2 flex justify-center">
+              <Button type="submit" variant="primary" disabled={isSubmitting}>
+                {isSubmitting ? 'Creando cuenta…' : 'Crear cuenta de proveedor'}
+              </Button>
+            </div>
           </form>
 
           <footer className="login-footer mt-6">

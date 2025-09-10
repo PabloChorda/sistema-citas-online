@@ -7,7 +7,7 @@ import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
 import { getLastPhone, setLastPhone } from '../utils/phoneMemory';
 
-// Util: decodifica el JWT (solo payload)
+// Decode JWT (payload)
 function decodeJwt(token) {
   if (!token) return null;
   const parts = token.split('.');
@@ -20,35 +20,49 @@ function decodeJwt(token) {
   }
 }
 
+// next seguro (solo rutas internas que empiezan por "/")
+function getSafeNext(searchParams) {
+  const candidate = searchParams.get('next');
+  if (typeof candidate === 'string' && candidate.startsWith('/') && !candidate.startsWith('//')) {
+    return candidate;
+  }
+  return '/dashboard';
+}
+
 export default function LoginPhone() {
   const [step, setStep] = useState('phone'); // 'phone' | 'code'
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
+
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const next = searchParams.get('next') || '/';
-  const inviteError = searchParams.get('error'); // p.ej. invalid_invite
+  const next = getSafeNext(searchParams);
+  const inviteError = searchParams.get('error'); // e.g. invalid_invite
   const autoSend = searchParams.get('send') === '1';
 
   const lastPhone = useMemo(() => getLastPhone() || '', []);
 
-  // Guarda tokens/role en localStorage (ambas claves para compatibilidad)
+  // Persist tokens (compat) + avisar al AuthContext
   const persistAuth = (accessToken, refreshToken, role) => {
-    if (accessToken) {
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('accessToken', accessToken);
-      const a = decodeJwt(accessToken);
-      if (a?.exp) localStorage.setItem('access_exp', String(a.exp));
-    }
-    if (refreshToken) {
-      localStorage.setItem('refresh_token', refreshToken);
-      localStorage.setItem('refreshToken', refreshToken);
-      const r = decodeJwt(refreshToken);
-      if (r?.exp) localStorage.setItem('refresh_exp', String(r.exp));
-    }
-    if (role) localStorage.setItem('userRole', role);
+    try {
+      if (accessToken) {
+        localStorage.setItem('access_token', accessToken);
+        localStorage.setItem('accessToken', accessToken);
+        const a = decodeJwt(accessToken);
+        if (a?.exp) localStorage.setItem('access_exp', String(a.exp));
+      }
+      if (refreshToken) {
+        localStorage.setItem('refresh_token', refreshToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        const r = decodeJwt(refreshToken);
+        if (r?.exp) localStorage.setItem('refresh_exp', String(r.exp));
+      }
+      if (role) localStorage.setItem('userRole', role);
+      // 🔔 Notificar a AuthContext (escucha el evento 'storage')
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
   };
 
   const onRequest = async (e) => {
@@ -62,18 +76,16 @@ export default function LoginPhone() {
     try {
       const res = await requestPhoneOtp(normalized);
 
-      // Guarda el último teléfono usado para UX
       setLastPhone(normalized);
       setStep('code');
 
       if (res?.debug_code) {
-        // En dev, autocompleta el input para facilitar la prueba
         setCode(res.debug_code);
         toast.success(`Código enviado. (DEV: ${res.debug_code})`);
 
-        // Si viene verify=1 en la URL y tenemos el code, auto-verificamos
         if (searchParams.get('verify') === '1') {
-          await onVerify(); // llama sin evento
+          // Auto-verificar en dev si se pide con ?verify=1
+          await onVerify(); // sin evento
           return;
         }
       } else {
@@ -96,28 +108,25 @@ export default function LoginPhone() {
     }
     setLoading(true);
     try {
-      // ⬇️ IMPORTANTE: asegúrate de que tu backend devuelva también refresh_token y role
-      // Respuesta esperada: { access_token, refresh_token, role, profile_complete, ... }
+      // Backend debe devolver: { access_token, refresh_token, role, profile_complete, ... }
       const data = await verifyPhoneOtp(normalized, code.trim());
 
-      // Persistimos sesión
+      // Persistir sesión y avisar contexto
       persistAuth(data.access_token, data.refresh_token, data.role);
-      // Guardamos el teléfono tras verificar correctamente
       setLastPhone(normalized);
 
       toast.success('Sesión iniciada');
 
       // Redirección:
-      // - Si el perfil no está completo, te mando al perfil cliente
-      // - Si está completo, voy a "next" (o home) respetando el query param
+      // - Si el perfil no está completo → perfil cliente
+      // - Si está completo → next (seguro) o dashboard
       if (!data?.profile_complete) {
         navigate('/dashboard/client/profile', { replace: true });
       } else {
         navigate(next, { replace: true });
       }
     } catch (err) {
-      const msg = err?.message || 'No se pudo verificar el código';
-      toast.error(msg);
+      toast.error(err?.message || 'No se pudo verificar el código');
     } finally {
       setLoading(false);
     }
@@ -133,11 +142,9 @@ export default function LoginPhone() {
       })();
       setPhone(decoded);
       if (autoSend) {
-        // envía OTP automáticamente
-        onRequest();
+        onRequest(); // envía OTP automáticamente
       }
     } else if (lastPhone) {
-      // Si no viene en la URL, intentamos recuperar el último teléfono recordado
       setPhone(lastPhone);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

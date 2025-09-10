@@ -7,18 +7,11 @@ const GoogleLoginComponent = ({ onLogin }) => {
   const [error, setError] = useState(null);
 
   const handleSuccess = (credentialResponse) => {
-    // La respuesta de Google ya nos da el token que necesita nuestro backend.
-    const googleToken = credentialResponse.credential;
-    console.log('Google Token recibido:', googleToken);
-    
-    if (onLogin) {
-      // Llamamos a la función que nos pasaron con el token.
-      onLogin(googleToken);
-    }
+    const googleToken = credentialResponse?.credential;
+    if (googleToken && onLogin) onLogin(googleToken);
   };
 
   const handleError = () => {
-    console.error('Google login failed');
     setError('Error al iniciar sesión con Google.');
   };
 
@@ -27,9 +20,10 @@ const GoogleLoginComponent = ({ onLogin }) => {
       <GoogleLogin
         onSuccess={handleSuccess}
         onError={handleError}
+        ux_mode="popup"
         useOneTap
       />
-      {error && <p style={{ color: 'red', marginTop: '10px' }}>{error}</p>}
+      {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
     </div>
   );
 };
