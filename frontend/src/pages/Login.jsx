@@ -2,10 +2,13 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
+
 import { loginUser, loginWithGoogle } from '../services/authService';
-import GoogleLoginComponent from "./GoogleLoginComponent";
+import GoogleLoginComponent from './GoogleLoginComponent';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+
+import { setAccessToken, setRefreshToken } from '../api/http';
 import { useAuth } from '../context/AuthContext';
 
 // Util: decodifica el JWT (solo payload)
@@ -21,6 +24,17 @@ function decodeJwt(token) {
   }
 }
 
+// Next seguro: solo rutas internas que empiecen por "/" (y no "//")
+function getSafeNext(location) {
+  const sp = new URLSearchParams(location.search);
+  const fromState = location.state?.from?.pathname;
+  const candidate = sp.get('next') || fromState;
+  if (typeof candidate === 'string' && candidate.startsWith('/') && !candidate.startsWith('//')) {
+    return candidate;
+  }
+  return '/dashboard';
+}
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,50 +42,48 @@ export default function Login() {
 
   const navigate = useNavigate();
   const location = useLocation();
-  const { refreshMe } = useAuth(); // 👈 clave
+  const { refreshMe } = useAuth();
 
-  const persistAuth = (accessToken, refreshToken, role) => {
-    // Guardamos en ambas claves por compat (métricas/legacy)
+  const persistTokens = (accessToken, refreshToken) => {
     if (accessToken) {
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('accessToken', accessToken);
+      setAccessToken(accessToken);
+      // opcional: guardar exp por si quieres mostrar contadores
       const a = decodeJwt(accessToken);
       if (a?.exp) localStorage.setItem('access_exp', String(a.exp));
     }
     if (refreshToken) {
-      localStorage.setItem('refresh_token', refreshToken);
-      localStorage.setItem('refreshToken', refreshToken);
+      setRefreshToken(refreshToken);
       const r = decodeJwt(refreshToken);
       if (r?.exp) localStorage.setItem('refresh_exp', String(r.exp));
     }
-    // (opcional) legacy
-    if (role) localStorage.setItem('userRole', role);
-
-    // Disparar un "storage" sintético para oyentes en esta misma pestaña
-    try { window.dispatchEvent(new Event('storage')); } catch {}
+    // compat legacy para código viejo que aún lee userRole (no imprescindible)
+    // si el backend lo devuelve en /auth/login:
+    // localStorage.setItem('userRole', role || '');
   };
 
-  const redirectAfterLogin = () => {
-    const nextFromQuery = new URLSearchParams(location.search).get('next');
-    const fromState = location.state?.from?.pathname;
-    const target = nextFromQuery || fromState || '/dashboard';
-    navigate(target, { replace: true });
+  const redirectAfterLogin = async () => {
+    // Traemos /auth/me antes de navegar para que ProtectedRoute y el layout
+    // ya tengan me listo y no “reboten”.
+    try {
+      await refreshMe();
+    } catch {
+      // si falla, navegamos igual; ProtectedRoute intentará refrescar luego
+    }
+    const next = getSafeNext(location);
+    navigate(next, { replace: true });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const data = await loginUser(email, password); // {access_token, refresh_token, role, ...}
-      persistAuth(data.access_token, data.refresh_token, data.role);
-
-      // 🔁 Pedimos el /auth/me actualizado antes de navegar
-      await refreshMe();
-
+      // /auth/login → { access_token, refresh_token, role, ... }
+      const data = await loginUser(email, password);
+      persistTokens(data?.access_token, data?.refresh_token);
       toast.success('¡Bienvenido/a de nuevo!');
-      redirectAfterLogin();
+      await redirectAfterLogin();
     } catch (error) {
-      toast.error(error?.message || "Error al iniciar sesión.");
+      toast.error(error?.message || 'Error al iniciar sesión.');
     } finally {
       setSubmitting(false);
     }
@@ -81,14 +93,11 @@ export default function Login() {
     setSubmitting(true);
     try {
       const data = await loginWithGoogle(googleToken);
-      persistAuth(data.access_token, data.refresh_token, data.role);
-
-      await refreshMe();
-
+      persistTokens(data?.access_token, data?.refresh_token);
       toast.success('¡Bienvenido/a de nuevo!');
-      redirectAfterLogin();
+      await redirectAfterLogin();
     } catch (error) {
-      toast.error(error?.message || "Error en el inicio con Google.");
+      toast.error(error?.message || 'Error en el inicio con Google.');
     } finally {
       setSubmitting(false);
     }
@@ -146,18 +155,12 @@ export default function Login() {
             </p>
             <p>
               ¿Eres proveedor?{' '}
-              <Link
-                to="/register/provider"
-                className="font-semibold text-brand-500 hover:underline"
-              >
+              <Link to="/register/provider" className="font-semibold text-brand-500 hover:underline">
                 Regístrate como proveedor
               </Link>
             </p>
             <p>
-              <Link
-                to="/register/reset-password"
-                className="font-semibold text-brand-500 hover:underline"
-              >
+              <Link to="/register/reset-password" className="font-semibold text-brand-500 hover:underline">
                 ¿Olvidaste tu contraseña?
               </Link>
             </p>

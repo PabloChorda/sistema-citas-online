@@ -1,7 +1,18 @@
+// frontend/src/pages/Magic.jsx
+
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { redeemMagicToken } from "../services/authService";
+
+// next seguro: solo rutas internas
+function getSafeNext(searchParams) {
+  const raw = searchParams.get("next");
+  if (typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//")) {
+    return raw;
+  }
+  return "/dashboard";
+}
 
 export default function Magic() {
   const [searchParams] = useSearchParams();
@@ -10,7 +21,8 @@ export default function Magic() {
 
   useEffect(() => {
     const token = searchParams.get("token");
-    const next = searchParams.get("next") || "/"; // permite /magic?token=...&next=/booking
+    const next = getSafeNext(searchParams);
+
     if (!token) {
       toast.error("Falta el token");
       setStatus("error");
@@ -20,17 +32,24 @@ export default function Magic() {
 
     (async () => {
       try {
-        // ⬇️ ahora leemos profile_complete del backend
+        // El backend devuelve { access_token, refresh_token, profile_complete, ... }
         const { profile_complete } = await redeemMagicToken(token);
+
+        // Notificar cambios de storage al mismo tab (AuthContext escucha este evento)
+        try {
+          window.dispatchEvent(new Event("storage"));
+        } catch {}
+
         setStatus("ok");
 
-        // Si el perfil está incompleto, forzamos completar perfil primero
         const target = profile_complete ? next : "/dashboard/client/profile";
-
-        // redirige tras 500ms para que el usuario vea el estado un instante
+        // pequeña pausa para que el usuario vea el estado
         setTimeout(() => navigate(target, { replace: true }), 500);
       } catch (err) {
-        const msg = err?.response?.data?.msg || "Enlace inválido o caducado";
+        const msg =
+          err?.response?.data?.msg ||
+          err?.message ||
+          "Enlace inválido o caducado";
         toast.error(msg);
         setStatus("error");
         navigate("/login", { replace: true });
