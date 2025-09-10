@@ -1,25 +1,31 @@
 // frontend/src/components/auth/RoleRoute.jsx
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
-export default function RoleRoute({ me, loading = false, allow = [] }) {
+export default function RoleRoute({ allow }) {
+  const { isAuthenticated, me, meLoading } = useAuth();
   const location = useLocation();
 
-  if (loading) {
+  if (meLoading) {
     return (
-      <div className="min-h-[30vh] flex items-center justify-center">
-        <div className="animate-pulse text-sm text-slate-500">Cargando…</div>
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <div className="animate-pulse text-sm text-slate-500">Comprobando permisos…</div>
       </div>
     );
   }
 
-  // Si no hay me, redirige a login preservando "from"
-  if (!me) {
-    return <Navigate to="/login" replace state={{ from: location }} />;
+  if (!isAuthenticated) {
+    const next = encodeURIComponent(location.pathname + location.search);
+    return <Navigate to={`/login?next=${next}`} replace />;
   }
 
-  const allowed = Array.isArray(allow) ? allow : [allow];
-  if (!allowed.includes(me.role)) {
-    // Usuario autenticado pero con rol incorrecto -> llévalo al dashboard raíz
+  if (!me) {
+    // caso raro: sin me pero autenticado → fuerza login
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allow && me.role !== allow) {
+    // rol incorrecto → a dashboard
     return <Navigate to="/dashboard" replace />;
   }
 

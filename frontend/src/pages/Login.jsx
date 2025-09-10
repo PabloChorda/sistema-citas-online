@@ -6,6 +6,7 @@ import { loginUser, loginWithGoogle } from '../services/authService';
 import GoogleLoginComponent from "./GoogleLoginComponent";
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { useAuth } from '../context/AuthContext';
 
 // Util: decodifica el JWT (solo payload)
 function decodeJwt(token) {
@@ -20,16 +21,17 @@ function decodeJwt(token) {
   }
 }
 
-function Login({ onLogin }) {
+export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const navigate = useNavigate();
   const location = useLocation();
+  const { refreshMe } = useAuth(); // 👈 clave
 
   const persistAuth = (accessToken, refreshToken, role) => {
-    // Guardamos en ambas claves por compatibilidad con métricas y otros
+    // Guardamos en ambas claves por compat (métricas/legacy)
     if (accessToken) {
       localStorage.setItem('access_token', accessToken);
       localStorage.setItem('accessToken', accessToken);
@@ -42,24 +44,30 @@ function Login({ onLogin }) {
       const r = decodeJwt(refreshToken);
       if (r?.exp) localStorage.setItem('refresh_exp', String(r.exp));
     }
-    localStorage.setItem('userRole', role || '');
+    // (opcional) legacy
+    if (role) localStorage.setItem('userRole', role);
 
-    // Notifica a App para actualizar estado global
-    if (typeof onLogin === 'function') onLogin(accessToken, role);
+    // Disparar un "storage" sintético para oyentes en esta misma pestaña
+    try { window.dispatchEvent(new Event('storage')); } catch {}
   };
 
   const redirectAfterLogin = () => {
-    const from = location.state?.from?.pathname || '/dashboard';
-    navigate(from, { replace: true });
+    const nextFromQuery = new URLSearchParams(location.search).get('next');
+    const fromState = location.state?.from?.pathname;
+    const target = nextFromQuery || fromState || '/dashboard';
+    navigate(target, { replace: true });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      // Backend devuelve { access_token, refresh_token, role, ... }
-      const data = await loginUser(email, password);
+      const data = await loginUser(email, password); // {access_token, refresh_token, role, ...}
       persistAuth(data.access_token, data.refresh_token, data.role);
+
+      // 🔁 Pedimos el /auth/me actualizado antes de navegar
+      await refreshMe();
+
       toast.success('¡Bienvenido/a de nuevo!');
       redirectAfterLogin();
     } catch (error) {
@@ -72,9 +80,11 @@ function Login({ onLogin }) {
   const handleGoogleLogin = async (googleToken) => {
     setSubmitting(true);
     try {
-      // Recomendado: que /api/oauth/google también devuelva refresh_token
       const data = await loginWithGoogle(googleToken);
       persistAuth(data.access_token, data.refresh_token, data.role);
+
+      await refreshMe();
+
       toast.success('¡Bienvenido/a de nuevo!');
       redirectAfterLogin();
     } catch (error) {
@@ -157,5 +167,3 @@ function Login({ onLogin }) {
     </div>
   );
 }
-
-export default Login;

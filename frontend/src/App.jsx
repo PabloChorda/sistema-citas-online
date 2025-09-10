@@ -33,8 +33,9 @@ import LoginPhone from './pages/LoginPhone';
 import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
 import AdminMetricsPage from "./pages/AdminMetricsPage";
 import RoleRoute from './components/auth/RoleRoute';
+import VerifiedRoute from './components/auth/VerifiedRoute';
 
-// 👇 usamos el AuthContext para me, meLoading, isAuthenticated y logout
+// Auth context
 import { useAuth } from './context/AuthContext';
 
 // Decide índice de dashboard por rol
@@ -59,7 +60,7 @@ export default function App() {
 
       <Routes>
         {/* --- RUTAS PÚBLICAS --- */}
-        <Route element={<PublicLayout me={me} handleLogout={handleLogout} />}>
+        <Route element={<PublicLayout handleLogout={handleLogout} />}>
           <Route path="/" element={<BrowsePage />} />
           <Route path="/login-phone" element={<LoginPhone />} />
           <Route path="/magic" element={<Magic />} />
@@ -86,22 +87,28 @@ export default function App() {
         {/* --- RUTAS PROTEGIDAS --- */}
         <Route element={<ProtectedRoute />}>
           <Route path="/booking/confirm" element={<ConfirmBookingPage />} />
+
           <Route path="/dashboard" element={<DashboardLayout me={me} handleLogout={handleLogout} />}>
             <Route index element={<DashboardIndex />} />
 
             {/* PROVEEDOR */}
-            <Route path="provider" element={<RoleRoute me={me} loading={meLoading} allow="provider" />}>
+            <Route path="provider" element={<RoleRoute allow="provider" />}>
+              {/* Acceso SIEMPRE permitido (p.ej. perfil) */}
               <Route path="profile" element={<ProviderProfile />} />
-              <Route path="establishments" element={<ManageEstablishments />} />
-              <Route path="establishments/new" element={<CreateEstablishment />} />
-              <Route path="establishments/edit/:establishmentId" element={<EditEstablishment />} />
-              <Route path="services" element={<ManageServices />} />
-              <Route path="availability" element={<ManageAvailability />} />
-              <Route path="appointments" element={<ProviderAppointments />} />
-              <Route path="staff" element={<ManageStaff />} />
-              <Route path="staff/availability" element={<ManageStaffAvailability />} />
-              <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
-              <Route path="admin/metrics" element={<AdminMetricsPage />} />
+
+              {/* Resto de gestión SOLO si email verificado */}
+              <Route element={<VerifiedRoute />}>
+                <Route path="establishments" element={<ManageEstablishments />} />
+                <Route path="establishments/new" element={<CreateEstablishment />} />
+                <Route path="establishments/edit/:establishmentId" element={<EditEstablishment />} />
+                <Route path="services" element={<ManageServices />} />
+                <Route path="availability" element={<ManageAvailability />} />
+                <Route path="appointments" element={<ProviderAppointments />} />
+                <Route path="staff" element={<ManageStaff />} />
+                <Route path="staff/availability" element={<ManageStaffAvailability />} />
+                <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
+                <Route path="admin/metrics" element={<AdminMetricsPage />} />
+              </Route>
             </Route>
 
             {/* CLIENTE */}
@@ -134,6 +141,8 @@ const NotFoundPage = () => (
   <div style={{ textAlign: 'center', paddingTop: '5rem', color: '#333' }}>
     <h1>404 - Página No Encontrada</h1>
     <p>Lo sentimos, la página que estás buscando no existe.</p>
-    <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>Volver a la página de inicio</Link>
+    <Link to="/" style={{ color: '#4f46e5', textDecoration: 'underline' }}>
+      Volver a la página de inicio
+    </Link>
   </div>
 );
