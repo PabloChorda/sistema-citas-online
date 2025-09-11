@@ -57,45 +57,51 @@ const ManageServices = () => {
 
   const handleSaveService = async (formData) => {
     if (!establishmentId) return;
-
-    // normaliza tipos
+  
     const processedData = {
       ...formData,
       duracion_minutos: parseInt(formData.duracion_minutos, 10),
       precio: parseFloat(formData.precio),
     };
-
+  
     if (isNaN(processedData.duracion_minutos) || isNaN(processedData.precio)) {
       toast.error('Por favor, introduce valores numéricos válidos para duración y precio.');
       return;
     }
-
-    const savePromise = serviceToEdit
+  
+    const isEditing = Boolean(serviceToEdit);
+    const savePromise = isEditing
       ? updateService(serviceToEdit.id, processedData)
       : createService(establishmentId, processedData);
-
+  
     try {
       await toast.promise(savePromise, {
         loading: 'Guardando servicio...',
         success: '¡Servicio guardado con éxito!',
         error: (err) => err.message || 'No se pudo guardar el servicio.',
       });
-
+  
       handleCloseModal();
       await fetchServices();
+  
+      // 🔔 avisa al banner para que pase “Añadir” → “✓ Listo”
+      try { window.dispatchEvent(new Event('provider:onboarding:refresh')); } catch {}
     } catch (err) {
       console.error('Error al guardar el servicio:', err);
     }
   };
-
+  
   const handleDeleteService = async (serviceId) => {
     if (!establishmentId) return;
-
+  
     if (window.confirm('¿Estás seguro de que quieres eliminar este servicio?')) {
       try {
         await deleteService(serviceId);
         toast.success('Servicio eliminado correctamente.');
         await fetchServices();
+  
+        // 🔔 refresca el banner (por si te quedas sin servicios y debe volver a “Añadir”)
+        try { window.dispatchEvent(new Event('provider:onboarding:refresh')); } catch {}
       } catch (err) {
         toast.error(err.message || 'No se pudo eliminar el servicio.');
         console.error('Error al eliminar el servicio:', err);

@@ -1,5 +1,4 @@
 // frontend/src/pages/CreateEstablishment.jsx
-
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, Link } from 'react-router-dom';
@@ -34,11 +33,12 @@ const CreateEstablishment = () => {
 
     try {
       await createEstablishment(formData);
-      
       toast.success('¡Establecimiento creado con éxito!');
-      
+
+      // 🔔 Notificar al banner de onboarding que revalide su estado
+      try { window.dispatchEvent(new Event('provider:onboarding:refresh')); } catch {}
+
       navigate('/dashboard/provider/establishments');
-      
     } catch (err) {
       toast.error(err.message || 'Ocurrió un error al crear el establecimiento.');
       console.error(err);
@@ -66,23 +66,22 @@ const CreateEstablishment = () => {
             <label htmlFor="direccion_completa" className="block text-sm font-medium text-gray-700">Dirección completa</label>
             <Input type="text" name="direccion_completa" id="direccion_completa" required onChange={handleChange} value={formData.direccion_completa} className="mt-1" />
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-                <label htmlFor="provincia" className="block text-sm font-medium text-gray-700">Provincia</label>
-                <Input type="text" name="provincia" id="provincia" required onChange={handleChange} value={formData.provincia} className="mt-1" />
+              <label htmlFor="provincia" className="block text-sm font-medium text-gray-700">Provincia</label>
+              <Input type="text" name="provincia" id="provincia" required onChange={handleChange} value={formData.provincia} className="mt-1" />
             </div>
             <div>
-                <label htmlFor="localidad" className="block text-sm font-medium text-gray-700">Localidad</label>
-                <Input type="text" name="localidad" id="localidad" required onChange={handleChange} value={formData.localidad} className="mt-1" />
+              <label htmlFor="localidad" className="block text-sm font-medium text-gray-700">Localidad</label>
+              <Input type="text" name="localidad" id="localidad" required onChange={handleChange} value={formData.localidad} className="mt-1" />
             </div>
           </div>
 
-          
           <div className="flex justify-end pt-4 space-x-4">
-            <Button 
-              type="button" 
-              variant="secondary" 
+            <Button
+              type="button"
+              variant="secondary"
               onClick={() => navigate('/dashboard/provider/establishments')}
             >
               Cancelar
