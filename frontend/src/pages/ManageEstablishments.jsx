@@ -133,8 +133,12 @@ export default function ManageEstablishments() {
       try {
         await deleteEstablishment(establishmentId);
         toast.success('Establecimiento eliminado con éxito.');
-        // Recargamos: al no ser primera carga, solo aparecerá la barrita sutil
+
+        // Recargamos la lista local (sin flash grande)
         await fetchProfileAndEstablishments();
+
+        // 🔔 Notificar al banner de onboarding que revalide su estado
+        try { window.dispatchEvent(new Event('provider:onboarding:refresh')); } catch {}
       } catch (err) {
         toast.error(err?.message || 'Error al eliminar el establecimiento.');
         console.error(err);

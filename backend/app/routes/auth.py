@@ -11,7 +11,7 @@ import secrets
 from app.utils.tokens import generate_validation_token
 from datetime import datetime, timezone, timedelta
 from app import db
-from app.models import User, Provider
+from app.models import User, Provider, Establishment, Service
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from flask_cors import cross_origin
@@ -630,7 +630,7 @@ def me():
     if not user:
         return jsonify({"msg": "Usuario no encontrado"}), 404
 
-    return jsonify({
+    payload = {
         "user_id": user.user_id,
         "role": user.role,
         "email": user.email,
@@ -641,4 +641,38 @@ def me():
         "phone_verified": bool(getattr(user, "phone_verified_at", None)),
         "avatar_url": getattr(user, "avatar_url", None),
         "is_active": getattr(user, "is_active", True),
-    }), 200
+    }
+
+    # --------- ONBOARDING (solo para proveedores) ---------
+    onboarding = None
+    if user.role == "provider":
+        # Relación típica: user.provider -> provider.establishments -> establishment.services
+        provider = getattr(user, "provider", None)
+
+        if provider:
+            ests = list(getattr(provider, "establishments", []) or [])
+            has_establishment = len(ests) > 0
+
+            # Cualquier establecimiento que tenga al menos un servicio
+            has_service = any(
+                len(getattr(est, "services", []) or []) > 0
+                for est in ests
+            )
+
+            # TODO: ajusta esta lógica a tu modelo real de disponibilidad/horarios
+            # Ejemplos posibles:
+            #  - hasattr(est, "opening_hours") and est.opening_hours
+            #  - hasattr(est, "availabilities") and est.availabilities
+            has_availability = False
+
+            onboarding = {
+                "has_establishment": has_establishment,
+                "has_service": has_service,
+                "has_availability": has_availability,
+                "complete": has_establishment and has_service and has_availability,
+            }
+
+    payload["onboarding"] = onboarding
+    # ------------------------------------------------------
+
+    return jsonify(payload), 200
