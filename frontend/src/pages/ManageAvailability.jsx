@@ -6,7 +6,6 @@ import { useSearchParams, Link } from 'react-router-dom';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 
-// Servicios de API
 import {
   getAvailability,
   createAvailabilityRule,
@@ -14,10 +13,7 @@ import {
   updateAvailabilityRule,
 } from '../services/availabilityService';
 
-// Modal existente
 import AvailabilityModal from '../components/availability/AvailabilityModal';
-
-// OJO: usa ClockIcon (no Clock)
 import { PencilIcon, TrashIcon, PlusIcon, ClockIcon } from '@heroicons/react/24/outline';
 
 const DAYS_OF_WEEK = [
@@ -44,10 +40,10 @@ const DayCardSkeleton = () => (
   </div>
 );
 
-const ManageAvailability = () => {
+export default function ManageAvailability() {
   const [searchParams] = useSearchParams();
   const establishmentId = searchParams.get('est_id');
-  const establishmentName = searchParams.get('name'); // opcional
+  const establishmentName = searchParams.get('name');
 
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -57,8 +53,13 @@ const ManageAvailability = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [ruleToEdit, setRuleToEdit] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+  // Forzamos remount del modal para limpiar campos tras crear
+  const [modalKey, setModalKey] = useState(0);
 
-  // Carga datos
+  // Estado controlado de los acordeones por día
+  // Inicialmente todo cerrado; se ajustará tras fetchear reglas
+  const [openByDay, setOpenByDay] = useState({});
+
   const fetchAvailability = useCallback(async () => {
     if (!establishmentId) return;
     try {
@@ -88,43 +89,91 @@ const ManageAvailability = () => {
     }, {});
   }, [rules]);
 
+  // Mantener acordeones: abiertos si hay franjas; cerrados si no
+  useEffect(() => {
+    const next = {};
+    for (const day of DAYS_OF_WEEK) {
+      next[day] = (rulesByDay[day]?.length || 0) > 0;
+    }
+    setOpenByDay(next);
+  }, [rulesByDay]);
+
+  // Abrimos el día correspondiente cuando se cambia el seleccionado (para UX al crear)
+  useEffect(() => {
+    if (!selectedDay) return;
+    setOpenByDay((prev) => ({ ...prev, [selectedDay]: true }));
+  }, [selectedDay]);
+
   // Handlers
   const handleOpenModal = (day = null, rule = null) => {
     setSelectedDay(day);
     setRuleToEdit(rule);
     setIsModalOpen(true);
+    // abre el acordeón del día inmediatamente (por si estaba cerrado)
+    if (day) setOpenByDay((prev) => ({ ...prev, [day]: true }));
   };
+
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setRuleToEdit(null);
     setSelectedDay(null);
   };
+
   const handleSaveRule = async (formData) => {
-    const savePromise = ruleToEdit
-      ? updateAvailabilityRule(ruleToEdit.id, formData)
-      : createAvailabilityRule(establishmentId, formData);
+    // Asegura que enviamos el día seleccionado si no viene en el form
+    const payload = {
+      ...formData,
+      dia_semana: formData.dia_semana || selectedDay,
+    };
+
+    const isEdit = Boolean(ruleToEdit);
+    const op = isEdit
+      ? updateAvailabilityRule(ruleToEdit.id, payload)
+      : createAvailabilityRule(establishmentId, payload);
+
     try {
-      await toast.promise(savePromise, {
+      await toast.promise(op, {
         loading: 'Guardando horario...',
         success: '¡Horario guardado con éxito!',
         error: (err) => err.message || 'No se pudo guardar el horario.',
       });
-      handleCloseModal();
+
+      // ✅ Mantener el modal ABIERTO para añadir más franjas
+      // Si era creación, reseteamos el modal forzando remount (limpia campos)
+      if (!isEdit) {
+        setModalKey((k) => k + 1);
+      }
+
+      // Refrescamos la lista; el efecto de rulesByDay abrirá/cerrará acordeones según contenido
       await fetchAvailability();
+
+      // Notifica al onboarding de proveedor
+      try {
+        window.dispatchEvent(new Event('provider:availability:saved'));
+      } catch {}
     } catch (err) {
       console.error('Fallo en handleSaveRule:', err);
     }
   };
-  const handleDeleteRule = async (ruleId) => {
-    if (window.confirm('¿Estás seguro de que quieres eliminar este horario?')) {
+
+  // Ahora recibe el objeto rule para conocer su día
+  const handleDeleteRule = async (rule) => {
+    if (!rule?.id) return;
+    try {
+      await toast.promise(deleteAvailabilityRule(rule.id), {
+        loading: 'Eliminando…',
+        success: 'Regla eliminada',
+        error: (err) => err.message || 'No se pudo eliminar la regla.',
+      });
+
+      // Tras refrescar, el efecto de rulesByDay cerrará el día si queda vacío
+      await fetchAvailability();
+
       try {
-        await deleteAvailabilityRule(ruleId);
-        toast.success('Horario eliminado correctamente.');
-        await fetchAvailability();
-      } catch (err) {
-        toast.error(err.message || 'No se pudo eliminar el horario.');
-        console.error('Error al eliminar la regla:', err);
-      }
+        window.dispatchEvent(new Event('provider:availability:saved'));
+      } catch {}
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -150,7 +199,6 @@ const ManageAvailability = () => {
 
   return (
     <div className="page-wrapper">
-      {/* Header sticky en móvil para tener contexto siempre visible */}
       <header className="page-header sticky top-0 z-10 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70">
         <h1 className="text-2xl font-semibold text-gray-900 m-0">Gestionar Disponibilidad</h1>
         <p className="text-gray-600 mt-1">
@@ -162,7 +210,6 @@ const ManageAvailability = () => {
         </p>
       </header>
 
-      {/* Lista de días: móvil 1 columna con acordeón; desktop grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -175,27 +222,32 @@ const ManageAvailability = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-5">
-          {DAYS_OF_WEEK.map((day, idx) => {
+          {DAYS_OF_WEEK.map((day) => {
             const dayRules = rulesByDay[day] || [];
             const dayLabel = day.charAt(0).toUpperCase() + day.slice(1).toLowerCase();
 
             return (
               <details
                 key={day}
-                // En móvil se cierra/abre; en desktop se deja abierto
-                open={idx === 0} // primer día abierto por defecto
+                open={!!openByDay[day]}
                 className="rounded-xl border border-gray-200 bg-white shadow-card"
               >
-                {/* Summary = cabecera clicable */}
-                <summary className="flex list-none cursor-pointer items-center justify-between gap-2 px-4 py-3 md:cursor-default">
+                <summary
+                  className="flex list-none cursor-pointer items-center justify-between gap-2 px-4 py-3"
+                  onClick={(e) => {
+                    // Gestionamos manualmente el toggle del <details>
+                    e.preventDefault();
+                    setOpenByDay((prev) => ({ ...prev, [day]: !prev[day] }));
+                  }}
+                >
                   <h3 className="text-base font-semibold text-gray-900">{dayLabel}</h3>
                   <div className="flex items-center gap-2">
-                    <span className="hidden text-xs text-gray-500 md:inline">{dayRules.length} franjas</span>
+                    {/* Botón añadir franja en el summary (sin contar franjas) */}
                     <Button
                       variant="secondarySoft"
                       size="sm"
                       onClick={(e) => {
-                        e.preventDefault(); // evita toggle del <details>
+                        e.preventDefault(); // evita cerrar/abrir el details
                         handleOpenModal(day);
                       }}
                       className="md:mr-1"
@@ -207,7 +259,6 @@ const ManageAvailability = () => {
                   </div>
                 </summary>
 
-                {/* Contenido del día */}
                 <div className="px-4 pb-4">
                   {dayRules.length > 0 ? (
                     <ul
@@ -247,7 +298,7 @@ const ManageAvailability = () => {
                             <Button
                               variant="link"
                               size="sm"
-                              onClick={() => handleDeleteRule(rule.id)}
+                              onClick={() => handleDeleteRule(rule)}
                               className="text-danger hover:text-red-700"
                               title="Eliminar franja"
                             >
@@ -263,7 +314,7 @@ const ManageAvailability = () => {
                     </div>
                   )}
 
-                  {/* Botón extra full-width en móvil para accesibilidad */}
+                  {/* Botón extra full-width en móvil */}
                   <div className="mt-3 md:hidden">
                     <Button className="w-full" onClick={() => handleOpenModal(day)}>
                       <PlusIcon className="h-4 w-4 mr-2" />
@@ -277,8 +328,8 @@ const ManageAvailability = () => {
         </div>
       )}
 
-      {/* Modal (reutiliza tu componente) */}
       <AvailabilityModal
+        key={modalKey}
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onSave={handleSaveRule}
@@ -287,6 +338,4 @@ const ManageAvailability = () => {
       />
     </div>
   );
-};
-
-export default ManageAvailability;
+}
