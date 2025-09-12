@@ -1,51 +1,39 @@
-// frontend/src/components/provider/ProviderOnboardingBanner.jsx
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getProviderProfile } from '../../services/providerService';
 import { useAuth } from '../../context/AuthContext';
 
 export default function ProviderOnboardingBanner() {
-  const { me } = useAuth(); // para tener user_id
-  const uid = me?.user_id ?? 'anon';
+  const { me } = useAuth();
+  const userId = me?.user_id ?? 'anon';
 
-  const HIDE_KEY = `onboarding_hide_provider_${uid}`;     // "1" = no volver a mostrar
-  const SNOOZE_KEY = `onboarding_snooze_provider_${uid}`; // timestamp ms hasta cuándo ocultar
+  const HIDE_KEY = `onboarding_hide_provider_${userId}`;   // “no volver a mostrar”
+  const SNOOZE_KEY = `onboarding_snooze_provider_${userId}`; // “ocultar hoy (24h)”
 
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState(null);
-  const [hidden, setHidden] = useState(false); // estado local de oculto/snooze/never
 
-  const readHidden = useCallback(() => {
+  // ---- helpers persistencia ----
+  const isHiddenForever = () => {
+    try { return localStorage.getItem(HIDE_KEY) === '1'; } catch { return false; }
+  };
+  const isSnoozedNow = () => {
     try {
-      const forever = localStorage.getItem(HIDE_KEY) === '1';
-      const snoozeUntil = Number(localStorage.getItem(SNOOZE_KEY) || '0');
-      const snoozed = snoozeUntil > Date.now();
-      return forever || snoozed;
-    } catch {
-      return false;
-    }
-  }, [HIDE_KEY, SNOOZE_KEY]);
-
-  const writeHideForever = useCallback(() => {
-    try { localStorage.setItem(HIDE_KEY, '1'); } catch {}
-    setHidden(true);
-  }, [HIDE_KEY]);
-
-  const writeSnooze = useCallback((minutes = 24 * 60) => {
-    const until = Date.now() + minutes * 60 * 1000;
-    try { localStorage.setItem(SNOOZE_KEY, String(until)); } catch {}
-    setHidden(true);
-  }, [SNOOZE_KEY]);
-
-  const clearSnoozeIfExpired = useCallback(() => {
+      const until = Number(localStorage.getItem(SNOOZE_KEY) || '0');
+      return Date.now() < until;
+    } catch { return false; }
+  };
+  const snooze24h = () => {
     try {
-      const snoozeUntil = Number(localStorage.getItem(SNOOZE_KEY) || '0');
-      if (snoozeUntil && snoozeUntil <= Date.now()) {
-        localStorage.removeItem(SNOOZE_KEY);
-      }
+      const until = Date.now() + 24 * 60 * 60 * 1000;
+      localStorage.setItem(SNOOZE_KEY, String(until));
     } catch {}
-  }, [SNOOZE_KEY]);
+  };
+  const hideForever = () => {
+    try { localStorage.setItem(HIDE_KEY, '1'); } catch {}
+  };
 
+  // ---- fetch perfil / progreso ----
   const fetchProfile = useCallback(async () => {
     setLoading(true);
     try {
@@ -58,19 +46,29 @@ export default function ProviderOnboardingBanner() {
     }
   }, []);
 
-  // Carga inicial + estado de oculto
+  // Carga inicial
   useEffect(() => {
-    clearSnoozeIfExpired();
-    setHidden(readHidden());
+    if (isHiddenForever() || isSnoozedNow()) return; // ni siquiera consultamos si está oculto
     fetchProfile();
-  }, [clearSnoozeIfExpired, readHidden, fetchProfile, uid]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   // Revalidar cuando otras pantallas avisen cambios
   useEffect(() => {
-    const onRefresh = () => fetchProfile();
+    const onRefresh = () => {
+      if (!isHiddenForever() && !isSnoozedNow()) {
+        fetchProfile();
+      }
+    };
     window.addEventListener('provider:onboarding:refresh', onRefresh);
-    return () => window.removeEventListener('provider:onboarding:refresh', onRefresh);
-  }, [fetchProfile]);
+    window.addEventListener('provider:availability:saved', onRefresh);
+    window.addEventListener('provider:staff:changed', onRefresh);
+    return () => {
+      window.removeEventListener('provider:onboarding:refresh', onRefresh);
+      window.removeEventListener('provider:availability:saved', onRefresh);
+      window.removeEventListener('provider:staff:changed', onRefresh);
+    };
+  }, [fetchProfile, userId]);
 
   const {
     hasEstablishment,
@@ -84,19 +82,19 @@ export default function ProviderOnboardingBanner() {
 
     const servicesOk = ests.some(
       (e) =>
-        (Array.isArray(e.services) && e.services.length > 0) ||
-        (typeof e.services_count === 'number' && e.services_count > 0)
+        (Array.isArray(e?.services) && e.services.length > 0) ||
+        (typeof e?.services_count === 'number' && e.services_count > 0)
     );
     const staffOk = ests.some(
       (e) =>
-        (Array.isArray(e.staff) && e.staff.length > 0) ||
-        (typeof e.staff_count === 'number' && e.staff_count > 0)
+        (Array.isArray(e?.staff) && e.staff.length > 0) ||
+        (typeof e?.staff_count === 'number' && e.staff_count > 0)
     );
     const availabilityOk = ests.some(
       (e) =>
-        e.availability_configured === true ||
-        e.has_availability === true ||
-        (Array.isArray(e.opening_hours) && e.opening_hours.length > 0)
+        e?.availability_configured === true ||
+        e?.has_availability === true ||
+        (Array.isArray(e?.opening_hours) && e.opening_hours.length > 0)
     );
 
     return {
@@ -108,17 +106,16 @@ export default function ProviderOnboardingBanner() {
     };
   }, [profile]);
 
+  // Ocultaciones y auto-ocultación
   if (loading) return null;
+  if (isHiddenForever() || isSnoozedNow()) return null;
   if (!profile) return null;
   if (profile?.onboarding_done === true) return null;
 
-  // Si todo está completo, ocultar (auto-hide)
-  const allDone = hasEstablishment && hasServices && hasAvailability /* && hasStaff si lo exiges */;
+  const allDone = hasEstablishment && hasServices && hasAvailability;
   if (allDone) return null;
 
-  // Si el usuario pidió ocultarlo (snooze/forever), no mostramos
-  if (hidden) return null;
-
+  // Enlaces dependientes del primer establecimiento
   const estNewUrl = '/dashboard/provider/establishments/new';
   const estListUrl = '/dashboard/provider/establishments';
   const servicesUrl = firstEstId
@@ -142,21 +139,19 @@ export default function ProviderOnboardingBanner() {
             Completa estos pasos para empezar a recibir reservas.
           </p>
         </div>
-
-        {/* Acciones de ocultar */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => writeSnooze(24 * 60)} // ocultar por 24h
-            className="rounded-md border px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
-            title="Ocultar por hoy"
+            onClick={() => { snooze24h(); window.dispatchEvent(new Event('provider:onboarding:refresh')); }}
+            className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            title="Ocultar durante 24 horas"
           >
             Ocultar hoy
           </button>
           <button
             type="button"
-            onClick={writeHideForever}
-            className="rounded-md bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+            onClick={() => { hideForever(); window.dispatchEvent(new Event('provider:onboarding:refresh')); }}
+            className="rounded bg-slate-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
             title="No volver a mostrar"
           >
             No volver a mostrar
