@@ -1,5 +1,6 @@
+// frontend/src/layouts/PublicLayout.jsx
 import React from 'react';
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Outlet, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Footer from './Footer';
 import TokenBadge from '../components/auth/TokenBadge';
@@ -9,6 +10,16 @@ import { useAuth } from '../context/AuthContext';
 const PublicLayout = ({ handleLogout }) => {
   const { isAuthenticated, logout } = useAuth();
   const doLogout = handleLogout || logout;
+  const navigate = useNavigate();
+
+  const onLogoutClick = () => {
+    try {
+      doLogout();
+    } finally {
+      // ir siempre al login y reemplazar el historial
+      navigate('/login', { replace: true });
+    }
+  };
 
   return (
     <div className="bg-gray-100 min-h-screen flex flex-col">
@@ -33,7 +44,7 @@ const PublicLayout = ({ handleLogout }) => {
                   <Button variant="outline" to="/dashboard">
                     Mi Panel
                   </Button>
-                  <Button variant="secondary" onClick={doLogout}>
+                  <Button variant="secondary" onClick={onLogoutClick}>
                     Cerrar Sesión
                   </Button>
                 </>
