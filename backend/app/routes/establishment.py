@@ -3,7 +3,7 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from app.models import Establishment, Provider, Service, AvailabilityRule, Appointment, Staff, StaffAvailabilityRule
+from app.models import Establishment, Provider, Service, AvailabilityRule, Appointment, Staff, StaffAvailabilityRule, CalendarBlackout
 from datetime import datetime, date, timedelta, time, timezone
 
 establishment_bp = Blueprint('establishment', __name__)
@@ -55,7 +55,8 @@ def get_public_establishment_details(establishment_id):
 @establishment_bp.route('/establishments/<int:establishment_id>/available-slots', methods=['GET'])
 def get_available_slots(establishment_id):
     """
-    Calcula los huecos disponibles. Ahora es consciente del modo 'staff'.
+    Calcula los huecos disponibles. Ahora es consciente del modo 'staff'
+    y filtra por festivos/blackouts.
     Acepta un parámetro opcional 'staff_id' para filtrar por un empleado específico.
     """
     # --- 1. OBTENCIÓN DE PARÁMETROS ---
@@ -100,9 +101,28 @@ def get_available_slots(establishment_id):
     start_of_day_local = datetime.combine(requested_dt_naive.date(), time.min, tzinfo=provider_tz)
     day_map = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
     day_of_week = day_map.get(start_of_day_local.weekday())
+    day_local_date = start_of_day_local.date()
 
     if not day_of_week:
         return jsonify([]), 200
+
+    # >>>>>>>>>>>>>>>>
+    # BLOQUEO POR FESTIVOS (opcional) y POR BLACKOUTS de día completo
+    # Si quieres activar festivos automáticos, añade en Establishment:
+    # - country_code='ES', region_code='VC', block_public_holidays=True
+    if _is_public_holiday(establishment, day_local_date):
+        return jsonify([]), 200
+
+    # Calculamos blackouts del día (en UTC) ANTES de generar slots
+    full_blackout, partial_blackouts_utc = _get_blackout_intervals_utc(
+        establishment_id=establishment_id,
+        day_local=day_local_date,
+        provider_tz=provider_tz,
+        timezone_mod=timezone,
+    )
+    if full_blackout:
+        return jsonify([]), 200
+    # <<<<<<<<<<<<<<<<
 
     # Modo staff vs modo sencillo
     if establishment.has_multiple_staff:
@@ -175,15 +195,20 @@ def get_available_slots(establishment_id):
         while current_slot_start + service_duration <= working_end:
             if current_slot_start >= now_utc:
                 slot_end = current_slot_start + service_duration
-                is_booked = any((current_slot_start < booked['end'] and slot_end > booked['start']) for booked in booked_slots)
-                
-                if not is_booked:
+
+                # 1) Ocupado por cita
+                is_booked = any(_overlaps(current_slot_start, slot_end, b['start'], b['end']) for b in booked_slots)
+
+                # 2) Solapa con blackout parcial (ya en UTC)
+                is_in_blackout = any(_overlaps(current_slot_start, slot_end, b0, b1) for (b0, b1) in partial_blackouts_utc)
+
+                if not is_booked and not is_in_blackout:
                     slot_in_provider_tz = current_slot_start.astimezone(provider_tz)
                     final_slots.add(slot_in_provider_tz.strftime('%H:%M'))
+
             current_slot_start += slot_increment
             
     return jsonify(sorted(list(final_slots))), 200
-
 
 # --- RUTAS PRIVADAS (requieren autenticación) ---
 
@@ -359,3 +384,55 @@ def get_establishment_appointments(establishment_id):
     appointments = query.order_by(Appointment.start_time.asc()).all()
 
     return jsonify([appt.to_dict() for appt in appointments]), 200
+
+# ----- Helpers para festivos / blackouts -----
+
+def _overlaps(a_start, a_end, b_start, b_end):
+    return a_start < b_end and b_start < a_end
+
+def _get_blackout_intervals_utc(establishment_id, day_local, provider_tz, timezone_mod):
+    """
+    Devuelve:
+      - full_day: bool si ese día está bloqueado entero
+      - partials_utc: lista de tuplas (start_utc, end_utc) para bloqueos parciales
+    """
+    full = CalendarBlackout.query.filter_by(
+        establishment_id=establishment_id, fecha=day_local, es_dia_completo=True
+    ).first()
+    if full:
+        return True, []
+
+    partials = CalendarBlackout.query.filter_by(
+        establishment_id=establishment_id, fecha=day_local, es_dia_completo=False
+    ).all()
+
+    from datetime import datetime as dt  # alias local para evitar choque con import superior
+    partials_utc = []
+    for b in partials:
+        # Construimos intervalos en LOCAL del proveedor y convertimos a UTC
+        start_local = dt.combine(day_local, b.hora_inicio, tzinfo=provider_tz)
+        end_local   = dt.combine(day_local, b.hora_fin,   tzinfo=provider_tz)
+        partials_utc.append((
+            start_local.astimezone(timezone_mod.utc),
+            end_local.astimezone(timezone_mod.utc),
+        ))
+    return False, partials_utc
+
+def _is_public_holiday(establishment, day_local):
+    """
+    Opcional: festivos automáticos con python-holidays.
+    Por defecto, NO bloquea (block_public_holidays=False salvo que añadas el campo).
+    """
+    block = getattr(establishment, "block_public_holidays", False)
+    if not block:
+        return False
+    try:
+        import holidays as pyholidays
+    except Exception:
+        # Si no tienes la librería instalada todavía, no bloquea por festivo
+        return False
+
+    country = getattr(establishment, "country_code", "ES")
+    region  = getattr(establishment, "region_code", None)  # ej. 'VC' para Comunitat Valenciana
+    hcal = pyholidays.country_holidays(country, subdiv=region, years=[day_local.year])
+    return day_local in hcal
