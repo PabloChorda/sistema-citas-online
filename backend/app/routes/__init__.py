@@ -21,6 +21,7 @@ from .whatsapp import bp as bp_whatsapp_webhook
 from .admin_metrics import bp as admin_metrics_bp
 from .admin_metrics_otp import bp as admin_metrics_otp_bp
 from .admin_metrics_webhook import bp as bp_admin_metrics_webhook
+from app.routes.calendar import calendar_bp
 
 
 # Registramos todos los blueprints
@@ -40,3 +41,4 @@ bp_api.register_blueprint(bp_whatsapp_webhook)
 bp_api.register_blueprint(admin_metrics_bp)
 bp_api.register_blueprint(admin_metrics_otp_bp)
 bp_api.register_blueprint(bp_admin_metrics_webhook)
+bp_api.register_blueprint(calendar_bp)

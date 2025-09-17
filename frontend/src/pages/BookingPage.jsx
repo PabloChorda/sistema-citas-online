@@ -10,6 +10,7 @@ import { getAvailableSlots, getPublicEstablishmentDetails } from '../services/es
 import { getPublicStaffForEstablishment } from '../services/staffService';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import { getBlackouts } from '../services/calendarService';
 
 // Util: YYYY-MM-DD
 const toYYYYMMDD = (date) => {
@@ -18,6 +19,21 @@ const toYYYYMMDD = (date) => {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+};
+
+// "YYYY-MM-DD" desde un Date (para usar como clave)
+const ymd = (d) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Rango (primer y último día) del mes visible en react-calendar
+const monthRange = (d) => {
+  const from = new Date(d.getFullYear(), d.getMonth(), 1);
+  const to = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return { from, to };
 };
 
 const BookingPage = () => {
@@ -40,6 +56,20 @@ const BookingPage = () => {
   const [loading, setLoading] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [error, setError] = useState('');
+
+  // Blackouts
+  const [calendarStart, setCalendarStart] = useState(monthRange(new Date()).from);
+  const [calendarEnd, setCalendarEnd] = useState(monthRange(new Date()).to);
+  const [blackouts, setBlackouts] = useState([]);
+
+  const blackoutSet = useMemo(
+    () => new Set(blackouts.filter(b => b.is_full_day).map(b => b.date)),
+    [blackouts]
+  );
+  const blackoutNameByDate = useMemo(
+    () => Object.fromEntries(blackouts.map(b => [b.date, b.name || 'No disponible'])),
+    [blackouts]
+  );
 
   // Datos iniciales
   useEffect(() => {
@@ -68,6 +98,23 @@ const BookingPage = () => {
     };
     fetchInitial();
   }, [establishmentId, isRescheduleMode, serviceIdToLock]);
+
+  // Cargar blackouts del mes visible
+  useEffect(() => {
+    if (!establishment) return;
+    (async () => {
+      try {
+        const data = await getBlackouts({
+          establishmentId,
+          from: toYYYYMMDD(calendarStart),
+          to: toYYYYMMDD(calendarEnd),
+        });
+        setBlackouts(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error('Error cargando blackouts', e);
+      }
+    })();
+  }, [establishment, establishmentId, calendarStart, calendarEnd]);
 
   // Cargar horarios por fecha + servicio (+ staff opcional)
   useEffect(() => {
@@ -123,7 +170,7 @@ const BookingPage = () => {
       slot,
       staffId: selectedStaffId === 'any' ? null : Number(selectedStaffId),
       availableStaff,
-      // NUEVO: info para reprogramar y rol
+      // info para reprogramar y rol
       rescheduleAppointmentId: appointmentToRescheduleId ? Number(appointmentToRescheduleId) : null,
       role,
     };
@@ -240,19 +287,54 @@ const BookingPage = () => {
                   locale="es-ES"
                   next2Label={null}
                   prev2Label={null}
+                  // Detecta cambio de mes visible para pedir blackouts del rango
+                  onActiveStartDateChange={({ activeStartDate, view }) => {
+                    if (view === 'month' && activeStartDate) {
+                      const { from, to } = monthRange(activeStartDate);
+                      setCalendarStart(from);
+                      setCalendarEnd(to);
+                    }
+                  }}
+                  // Deshabilitar pasado + días con blackout
                   tileDisabled={({ date, view }) => {
                     if (!selectedService) return true;
                     if (view !== 'month') return false;
+
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
                     const d = new Date(date);
                     d.setHours(0, 0, 0, 0);
-                    return d < today;
+
+                    const isPast = d < today;
+                    const isBlackout = blackoutSet.has(ymd(d));
+                    return isPast || isBlackout;
                   }}
                   tileClassName={({ date, view }) => {
                     if (view !== 'month') return '';
                     const isToday = new Date().toDateString() === date.toDateString();
-                    return ['rounded-md', isToday ? 'ring-1 ring-brand-500' : ''].join(' ');
+                    // 'relative' para posicionar el indicador dentro de la celda
+                    return ['relative', 'rounded-md', isToday ? 'ring-1 ring-brand-500' : ''].join(' ');
+                  }}
+                  // Indicador + tooltip con el nombre del blackout (en base de la celda)
+                  tileContent={({ date, view }) => {
+                    if (view !== 'month') return null;
+                    const key = ymd(date);
+                    const name = blackoutNameByDate[key];
+                    return name ? (
+                      <span
+                        title={name}
+                        style={{
+                          position: 'absolute',
+                          bottom: 4,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          fontSize: 12,
+                          lineHeight: 1
+                        }}
+                      >
+                        •
+                      </span>
+                    ) : null;
                   }}
                 />
               </div>
@@ -331,4 +413,3 @@ const BookingPage = () => {
 };
 
 export default BookingPage;
-
