@@ -56,6 +56,8 @@ const BookingPage = () => {
   const [loading, setLoading] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [error, setError] = useState('');
+
+  // Blackouts
   const [calendarStart, setCalendarStart] = useState(monthRange(new Date()).from);
   const [calendarEnd, setCalendarEnd] = useState(monthRange(new Date()).to);
   const [blackouts, setBlackouts] = useState([]);
@@ -97,6 +99,7 @@ const BookingPage = () => {
     fetchInitial();
   }, [establishmentId, isRescheduleMode, serviceIdToLock]);
 
+  // Cargar blackouts del mes visible
   useEffect(() => {
     if (!establishment) return;
     (async () => {
@@ -109,7 +112,6 @@ const BookingPage = () => {
         setBlackouts(Array.isArray(data) ? data : []);
       } catch (e) {
         console.error('Error cargando blackouts', e);
-        // la UI puede seguir sin bloquear días si falla
       }
     })();
   }, [establishment, establishmentId, calendarStart, calendarEnd]);
@@ -168,7 +170,7 @@ const BookingPage = () => {
       slot,
       staffId: selectedStaffId === 'any' ? null : Number(selectedStaffId),
       availableStaff,
-      // NUEVO: info para reprogramar y rol
+      // info para reprogramar y rol
       rescheduleAppointmentId: appointmentToRescheduleId ? Number(appointmentToRescheduleId) : null,
       role,
     };
@@ -278,54 +280,63 @@ const BookingPage = () => {
               </h2>
 
               <div className="flex justify-center py-2 md:py-0">
-              <Calendar
-                onChange={handleDateChange}
-                value={selectedDate}
-                minDate={new Date()}
-                locale="es-ES"
-                next2Label={null}
-                prev2Label={null}
+                <Calendar
+                  onChange={handleDateChange}
+                  value={selectedDate}
+                  minDate={new Date()}
+                  locale="es-ES"
+                  next2Label={null}
+                  prev2Label={null}
+                  // Detecta cambio de mes visible para pedir blackouts del rango
+                  onActiveStartDateChange={({ activeStartDate, view }) => {
+                    if (view === 'month' && activeStartDate) {
+                      const { from, to } = monthRange(activeStartDate);
+                      setCalendarStart(from);
+                      setCalendarEnd(to);
+                    }
+                  }}
+                  // Deshabilitar pasado + días con blackout
+                  tileDisabled={({ date, view }) => {
+                    if (!selectedService) return true;
+                    if (view !== 'month') return false;
 
-                // NUEVO: detectar cambio de mes visible para pedir blackouts del rango
-                onActiveStartDateChange={({ activeStartDate, view }) => {
-                  if (view === 'month' && activeStartDate) {
-                    const { from, to } = monthRange(activeStartDate);
-                    setCalendarStart(from);
-                    setCalendarEnd(to);
-                  }
-                }}
-              
-                // AJUSTE: deshabilitar pasado + días con blackout
-                tileDisabled={({ date, view }) => {
-                  if (!selectedService) return true;
-                  if (view !== 'month') return false;
-                
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const d = new Date(date);
-                  d.setHours(0, 0, 0, 0);
-                
-                  const isPast = d < today;
-                  const isBlackout = blackoutSet.has(ymd(d));
-                  return isPast || isBlackout;
-                }}
-              
-                tileClassName={({ date, view }) => {
-                  if (view !== 'month') return '';
-                  const isToday = new Date().toDateString() === date.toDateString();
-                  return ['rounded-md', isToday ? 'ring-1 ring-brand-500' : ''].join(' ');
-                }}
-              
-                // NUEVO: puntito + tooltip con el nombre del blackout
-                tileContent={({ date, view }) => {
-                  if (view !== 'month') return null;
-                  const key = ymd(date);
-                  const name = blackoutNameByDate[key];
-                  return name ? (
-                    <span title={name} className="inline-block align-middle" style={{ fontSize: '12px' }}>•</span>
-                  ) : null;
-                }}
-              />
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const d = new Date(date);
+                    d.setHours(0, 0, 0, 0);
+
+                    const isPast = d < today;
+                    const isBlackout = blackoutSet.has(ymd(d));
+                    return isPast || isBlackout;
+                  }}
+                  tileClassName={({ date, view }) => {
+                    if (view !== 'month') return '';
+                    const isToday = new Date().toDateString() === date.toDateString();
+                    // 'relative' para posicionar el indicador dentro de la celda
+                    return ['relative', 'rounded-md', isToday ? 'ring-1 ring-brand-500' : ''].join(' ');
+                  }}
+                  // Indicador + tooltip con el nombre del blackout (en base de la celda)
+                  tileContent={({ date, view }) => {
+                    if (view !== 'month') return null;
+                    const key = ymd(date);
+                    const name = blackoutNameByDate[key];
+                    return name ? (
+                      <span
+                        title={name}
+                        style={{
+                          position: 'absolute',
+                          bottom: 4,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          fontSize: 12,
+                          lineHeight: 1
+                        }}
+                      >
+                        •
+                      </span>
+                    ) : null;
+                  }}
+                />
               </div>
             </Card>
           )}
@@ -402,4 +413,3 @@ const BookingPage = () => {
 };
 
 export default BookingPage;
-

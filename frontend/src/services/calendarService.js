@@ -32,3 +32,30 @@ export const getHolidays = ({ country = 'ES', region, from, to, year } = {}) => 
   };
   return apiClient('/calendar/holidays', 'GET', null, { params });
 };
+
+// Crear blackout (requiere sesión de provider)
+export const createBlackout = ({
+  establishmentId,
+  date,                // "YYYY-MM-DD"
+  isFullDay = true,
+  startTime,           // "HH:MM" (si isFullDay=false)
+  endTime,             // "HH:MM" (si isFullDay=false)
+  name,
+  category
+}) => {
+  const payload = {
+    establishment_id: Number(establishmentId),
+    date,
+    is_full_day: !!isFullDay,
+    ...(isFullDay ? {} : { start_time: startTime, end_time: endTime }),
+    ...(name ? { name } : {}),
+    ...(category ? { category } : {}),
+  };
+  return apiClient('/calendar/blackouts', 'POST', payload);
+};
+
+export const updateBlackout = (blackoutId, payload) =>
+  apiClient(`/calendar/blackouts/${blackoutId}`, 'PUT', payload);
+
+export const deleteBlackout = (blackoutId) =>
+  apiClient(`/calendar/blackouts/${blackoutId}`, 'DELETE');
