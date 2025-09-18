@@ -59,3 +59,10 @@ export const updateBlackout = (blackoutId, payload) =>
 
 export const deleteBlackout = (blackoutId) =>
   apiClient(`/calendar/blackouts/${blackoutId}`, 'DELETE');
+
+export const seedHolidays = ({ establishmentId, country='ES', year, region, category='holiday', types='Public,Bank' }) => {
+  return apiClient('/calendar/blackouts/seed-holidays', 'POST', {
+    establishment_id: Number(establishmentId),
+    country, year, region, category, types,
+  });
+};

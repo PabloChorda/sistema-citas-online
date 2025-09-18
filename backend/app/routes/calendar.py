@@ -2,7 +2,10 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, time as time_cls
+from datetime import datetime, time as time_cls, timezone
+import os
+import requests
+
 from app import db
 from app.models import CalendarBlackout, Establishment, User
 
@@ -10,11 +13,14 @@ from app.models import CalendarBlackout, Establishment, User
 # (se añade en create_app con app.register_blueprint(calendar_bp, url_prefix="/api"))
 calendar_bp = Blueprint("calendar", __name__)
 
-# ----------------- Helpers -----------------
+# ======================== Config ==========================
+# Valor por defecto; si has puesto Config.CRON_SECRET en tu app, usaremos ese.
+CRON_SECRET = os.getenv("CRON_SECRET", "change-me")  # Pon un secreto real en producción
 
+
+# ======================== Helpers =========================
 def _parse_date(s: str):
     try:
-        # Acepta "YYYY-MM-DD"
         return datetime.strptime(s, "%Y-%m-%d").date()
     except Exception:
         raise ValueError("Formato de fecha inválido. Usa 'YYYY-MM-DD'.")
@@ -50,23 +56,23 @@ def _provider_owns_establishment(user: User, establishment: Establishment) -> bo
     if not user or not establishment:
         return False
 
-    # Caso 1: identity es provider_id y coincide con el owner del establecimiento
     try:
         ident = int(get_jwt_identity())
     except Exception:
         ident = None
 
+    # Caso 1: identity es provider_id y coincide con el owner del establecimiento
     if ident and ident == establishment.provider_id:
         return True
 
     # Caso 2: identity es user_id -> comprobar que el usuario es provider y dueño
-    if user.role == "provider" and user.provider_profile:
+    if getattr(user, "role", None) == "provider" and getattr(user, "provider_profile", None):
         return establishment.provider_id == user.provider_profile.provider_id
 
     return False
 
-# ----------------- Rutas -----------------
 
+# ======================== Blackouts =======================
 @calendar_bp.get("/calendar/blackouts")
 def list_blackouts():
     """
@@ -201,6 +207,239 @@ def delete_blackout(blackout_id: int):
         db.session.commit()
         return jsonify({"msg": "Eliminado"}), 200
     except Exception as e:
-        db.session.rollback()
+        db.session.rollback()  # <-- faltaban paréntesis
         current_app.logger.error(f"Error eliminando blackout {blackout_id}: {e}", exc_info=True)
         return jsonify({"msg": "Error interno al eliminar el blackout."}), 500
+
+
+# ======================== Festivos (Nager) =======================
+def _nager_fetch_holidays(country: str, year: int):
+    url = f"https://date.nager.at/api/v3/PublicHolidays/{year}/{country.upper()}"
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    return resp.json()  # lista de dicts
+
+
+@calendar_bp.get("/calendar/holidays")
+def proxy_nager_holidays():
+    """
+    GET /api/calendar/holidays?country=ES&year=2025&region=ES-VC
+    Proxy simple a Nager.Date con filtrado opcional por región y tipos.
+    """
+    country = (request.args.get("country") or "ES").upper()
+    year = request.args.get("year", type=int) or datetime.utcnow().year
+    region = request.args.get("region")  # ej: ES-VC
+    allowed_types = set((request.args.get("types") or "Public,Bank").split(","))
+
+    try:
+        data = _nager_fetch_holidays(country, year)
+    except Exception as e:
+        return jsonify({"msg": f"No se pudieron obtener festivos: {e}"}), 502
+
+    out = []
+    for h in data:
+        types = set(h.get("types") or [])
+        if not (types & allowed_types):
+            continue
+        counties = h.get("counties")  # None = global
+        if region:
+            if counties is not None and region not in counties:
+                continue
+        out.append({
+            "date": h["date"],             # "YYYY-MM-DD"
+            "localName": h.get("localName"),
+            "name": h.get("name"),
+            "countryCode": h.get("countryCode"),
+            "global": h.get("global"),
+            "counties": counties,
+            "types": list(types),
+        })
+    return jsonify(out), 200
+
+
+@calendar_bp.post("/calendar/blackouts/seed-holidays")
+@jwt_required()
+def seed_holidays_to_blackouts():
+    """
+    POST /api/calendar/blackouts/seed-holidays
+    Body: { establishment_id, country?:'ES', year?:2025, region?:'ES-VC', category?:'holiday' }
+    Crea blackouts de día completo por cada festivo que aplique (idempotente con el UNIQUE).
+    """
+    user = _get_current_user()
+    if not user:
+        return jsonify({"msg": "Token inválido."}), 422
+
+    payload = request.get_json() or {}
+    est_id = payload.get("establishment_id")
+    if not est_id:
+        return jsonify({"msg": "Falta establishment_id"}), 400
+
+    est = Establishment.query.get(est_id)
+    if not est or not est.activo:
+        return jsonify({"msg": "Establecimiento no encontrado o inactivo."}), 404
+    if not _provider_owns_establishment(user, est):
+        return jsonify({"msg": "No tienes permisos sobre este establecimiento."}), 403
+
+    country = (payload.get("country") or "ES").upper()
+    year = int(payload.get("year") or datetime.utcnow().year)
+    region = payload.get("region")  # ej: ES-VC
+    category = payload.get("category") or "holiday"
+    allowed_types = set((payload.get("types") or "Public,Bank").split(","))
+
+    try:
+        data = _nager_fetch_holidays(country, year)
+    except Exception as e:
+        return jsonify({"msg": f"No se pudieron obtener festivos: {e}"}), 502
+
+    created = []
+    inserted, skipped = 0, 0
+    for h in data:
+        types = set(h.get("types") or [])
+        if not (types & allowed_types):
+            continue
+        counties = h.get("counties")
+        if region and (counties is not None) and (region not in counties):
+            continue
+
+        fecha = h["date"]  # "YYYY-MM-DD"
+        nombre = h.get("localName") or h.get("name") or "Festivo"
+
+        try:
+            b = CalendarBlackout(
+                establishment_id=est_id,
+                fecha=datetime.strptime(fecha, "%Y-%m-%d").date(),
+                es_dia_completo=True,
+                hora_inicio=None,
+                hora_fin=None,
+                nombre=nombre,
+                categoria=category
+            )
+            db.session.add(b)
+            db.session.commit()
+            created.append(b.to_dict())
+            inserted += 1
+        except IntegrityError:
+            db.session.rollback()
+            skipped += 1
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"msg": f"Error creando blackout para {fecha}: {e}"}), 500
+
+    return jsonify({
+        "inserted": inserted,
+        "skipped": skipped,
+        "items": created
+    }), 201
+
+
+# ================== Cron interno (auto-holidays) ==================
+def _seed_holidays_for_establishment(est: Establishment, year: int, types_set: set, category: str):
+    """
+    Siembra festivos (día completo) para un establecimiento y año.
+    Usa preferencias guardadas en el establecimiento (country/region).
+    Idempotente gracias al UNIQUE de calendar_blackouts.
+    """
+    country = (est.holiday_country_code or "ES").upper()
+    region = est.holiday_region_code
+
+    data = _nager_fetch_holidays(country, year)
+    inserted = skipped = 0
+
+    for h in data:
+        types = set(h.get("types") or [])
+        if not (types & types_set):
+            continue
+        counties = h.get("counties")  # None = global
+        if region and (counties is not None) and (region not in counties):
+            continue
+
+        fecha = h["date"]
+        nombre = h.get("localName") or h.get("name") or "Festivo"
+
+        try:
+            blackout = CalendarBlackout(
+                establishment_id=est.id,
+                fecha=datetime.strptime(fecha, "%Y-%m-%d").date(),
+                es_dia_completo=True,
+                hora_inicio=None,
+                hora_fin=None,
+                nombre=nombre,
+                categoria=category
+            )
+            db.session.add(blackout)
+            db.session.commit()
+            inserted += 1
+        except IntegrityError:
+            db.session.rollback()
+            skipped += 1
+
+    # Tracking (sellamos último año y última sync)
+    try:
+        est.holiday_last_seed_year = max(filter(None, [est.holiday_last_seed_year, year]))
+        est.holiday_last_sync_at = datetime.now(timezone.utc)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return inserted, skipped
+
+
+@calendar_bp.post("/internal/cron/seed-holidays")
+def internal_cron_seed_holidays():
+    """
+    POST /api/internal/cron/seed-holidays
+    Header: X-CRON-SECRET: <CRON_SECRET>
+    - Recorre establecimientos con holiday_auto_enabled y siembra festivos
+      para [año_actual .. año_actual + holiday_years_ahead]
+    - Idempotente gracias al UNIQUE de CalendarBlackout.
+    - Actualiza holiday_last_seed_year y holiday_last_sync_at en cada establecimiento.
+    """
+    # coge el secreto de la app (si está) o del fallback del módulo
+    expected = current_app.config.get("CRON_SECRET", CRON_SECRET)
+    secret = request.headers.get("X-CRON-SECRET")
+    if not expected or secret != expected:
+        return jsonify({"msg": "Unauthorized"}), 401
+
+    now_utc = datetime.now(timezone.utc)
+    current_year = now_utc.year
+
+    ests = Establishment.query.filter_by(holiday_auto_enabled=True, activo=True).all()
+
+    total_inserted = 0
+    total_skipped = 0
+    total_processed = 0
+
+    for est in ests:
+        types = set((est.holiday_types or "Public,Bank").split(","))
+        years_ahead = est.holiday_years_ahead or 0
+
+        # años objetivo
+        years = range(current_year, current_year + years_ahead + 1)
+
+        inserted_sum = skipped_sum = 0
+        max_year_seeded = est.holiday_last_seed_year or 0
+
+        for y in years:
+            ins, skp = _seed_holidays_for_establishment(est, y, types, "holiday")
+            inserted_sum += ins
+            skipped_sum += skp
+            if y > max_year_seeded:
+                max_year_seeded = y
+
+        # marca sync y último año sembrado (aunque no haya inserts, sirve de “sellado”)
+        try:
+            est.holiday_last_seed_year = max_year_seeded if max_year_seeded else est.holiday_last_seed_year
+            est.holiday_last_sync_at = now_utc
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        total_inserted += inserted_sum
+        total_skipped += skipped_sum
+        total_processed += 1
+
+    return jsonify({
+        "count": total_processed,
+        "inserted": total_inserted,
+        "skipped": total_skipped
+    }), 200
