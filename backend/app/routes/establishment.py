@@ -3,8 +3,17 @@
 from flask import Blueprint, jsonify, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
-from app.models import Establishment, Provider, Service, AvailabilityRule, Appointment, Staff, StaffAvailabilityRule, CalendarBlackout
-from datetime import datetime, date, timedelta, time, timezone
+from app.models import (
+    Establishment,
+    Provider,
+    Service,
+    AvailabilityRule,
+    Appointment,
+    Staff,
+    StaffAvailabilityRule,
+    CalendarBlackout,
+)
+from datetime import datetime, timedelta, time, timezone
 
 establishment_bp = Blueprint('establishment', __name__)
 
@@ -23,7 +32,6 @@ def list_public_establishments():
             visible_en_busquedas=True
         ).order_by(Establishment.nombre).all()
 
-        # Serialización pública
         return jsonify([est.to_public_dict() for est in establishments]), 200
     except Exception as e:
         current_app.logger.error(f"Error listando establecimientos públicos: {e}", exc_info=True)
@@ -38,24 +46,19 @@ def get_public_establishment_details(establishment_id):
     Obtiene los detalles públicos de un establecimiento para la página de reserva.
     """
     establishment = Establishment.query.filter_by(id=establishment_id, activo=True).first()
-    
     if not establishment:
         return jsonify({"msg": "Establecimiento no encontrado o inactivo."}), 404
 
-    # Usamos la serialización pública
     establishment_data = establishment.to_public_dict()
-    
-    # Servicios activos
     services = Service.query.filter_by(establishment_id=establishment.id, is_active=True).all()
     establishment_data['services'] = [service.to_dict() for service in services]
-    
     return jsonify(establishment_data), 200
 
 
 @establishment_bp.route('/establishments/<int:establishment_id>/available-slots', methods=['GET'])
 def get_available_slots(establishment_id):
     """
-    Calcula los huecos disponibles. Ahora es consciente del modo 'staff'
+    Calcula los huecos disponibles. Consciente del modo 'staff'
     y filtra por festivos/blackouts.
     Acepta un parámetro opcional 'staff_id' para filtrar por un empleado específico.
     """
@@ -87,7 +90,7 @@ def get_available_slots(establishment_id):
         return jsonify({"msg": "Este servicio no pertenece a este establecimiento."}), 400
 
     provider = establishment.provider
-    if not provider.timezone:
+    if not provider or not provider.timezone:
         return jsonify({"msg": "La zona horaria del proveedor no está configurada."}), 500
 
     try:
@@ -106,14 +109,10 @@ def get_available_slots(establishment_id):
     if not day_of_week:
         return jsonify([]), 200
 
-    # >>>>>>>>>>>>>>>>
-    # BLOQUEO POR FESTIVOS (opcional) y POR BLACKOUTS de día completo
-    # Si quieres activar festivos automáticos, añade en Establishment:
-    # - country_code='ES', region_code='VC', block_public_holidays=True
+    # Festivos (opcional) + blackouts
     if _is_public_holiday(establishment, day_local_date):
         return jsonify([]), 200
 
-    # Calculamos blackouts del día (en UTC) ANTES de generar slots
     full_blackout, partial_blackouts_utc = _get_blackout_intervals_utc(
         establishment_id=establishment_id,
         day_local=day_local_date,
@@ -122,24 +121,21 @@ def get_available_slots(establishment_id):
     )
     if full_blackout:
         return jsonify([]), 200
-    # <<<<<<<<<<<<<<<<
 
     # Modo staff vs modo sencillo
     if establishment.has_multiple_staff:
-        # Profesionales que pueden hacer el servicio
         query_staff = Staff.query.join(Staff.services).filter(
             Staff.establishment_id == establishment_id,
-            Staff.activo == True,
+            Staff.activo.is_(True),
             Service.id == service_id
         )
         if staff_id:
             query_staff = query_staff.filter(Staff.id == staff_id)
-        
+
         available_staff = query_staff.all()
         if not available_staff:
             return jsonify([]), 200
 
-        # Reglas de disponibilidad por empleado
         working_intervals = []
         for member in available_staff:
             rules = StaffAvailabilityRule.query.filter_by(staff_id=member.id, dia_semana=day_of_week).all()
@@ -150,7 +146,6 @@ def get_available_slots(establishment_id):
                     "end": datetime.combine(start_of_day_local.date(), rule.hora_fin, tzinfo=provider_tz)
                 })
     else:
-        # Reglas del establecimiento (modo antiguo)
         rules = AvailabilityRule.query.filter_by(
             establishment_id=establishment_id,
             dia_semana=day_of_week,
@@ -168,7 +163,7 @@ def get_available_slots(establishment_id):
     # --- 4. Generación de huecos ---
     start_of_day_utc = start_of_day_local.astimezone(timezone.utc)
     end_of_day_utc = start_of_day_utc + timedelta(days=1)
-    
+
     existing_appointments = Appointment.query.join(Service).filter(
         Service.establishment_id == establishment_id,
         Appointment.start_time >= start_of_day_utc,
@@ -196,10 +191,7 @@ def get_available_slots(establishment_id):
             if current_slot_start >= now_utc:
                 slot_end = current_slot_start + service_duration
 
-                # 1) Ocupado por cita
                 is_booked = any(_overlaps(current_slot_start, slot_end, b['start'], b['end']) for b in booked_slots)
-
-                # 2) Solapa con blackout parcial (ya en UTC)
                 is_in_blackout = any(_overlaps(current_slot_start, slot_end, b0, b1) for (b0, b1) in partial_blackouts_utc)
 
                 if not is_booked and not is_in_blackout:
@@ -207,8 +199,9 @@ def get_available_slots(establishment_id):
                     final_slots.add(slot_in_provider_tz.strftime('%H:%M'))
 
             current_slot_start += slot_increment
-            
+
     return jsonify(sorted(list(final_slots))), 200
+
 
 # --- RUTAS PRIVADAS (requieren autenticación) ---
 
@@ -223,7 +216,7 @@ def get_provider_id_from_jwt():
 @jwt_required()
 def get_establishment(establishment_id):
     provider_id = get_provider_id_from_jwt()
-    if not provider_id: 
+    if not provider_id:
         return jsonify({"msg": "Identidad del token inválida"}), 422
 
     establishment = Establishment.query.get(establishment_id)
@@ -233,7 +226,6 @@ def get_establishment(establishment_id):
     if establishment.provider_id != provider_id:
         return jsonify({"msg": "Acceso denegado."}), 403
 
-    # Serialización privada para edición
     return jsonify(establishment.to_private_dict()), 200
 
 
@@ -241,7 +233,7 @@ def get_establishment(establishment_id):
 @jwt_required()
 def create_establishment():
     provider_id = get_provider_id_from_jwt()
-    if not provider_id: 
+    if not provider_id:
         return jsonify({"msg": "Identidad del token inválida"}), 422
 
     provider = Provider.query.get(provider_id)
@@ -285,7 +277,7 @@ def create_establishment():
 @jwt_required()
 def update_establishment(establishment_id):
     provider_id = get_provider_id_from_jwt()
-    if not provider_id: 
+    if not provider_id:
         return jsonify({"msg": "Identidad del token inválida"}), 422
 
     establishment = Establishment.query.get(establishment_id)
@@ -299,17 +291,23 @@ def update_establishment(establishment_id):
     if not data:
         return jsonify({"msg": "No se recibieron datos"}), 400
 
+    # ⚠️ Incluye settings de festivos automáticos
     editable_fields = [
         'nombre', 'direccion_completa', 'provincia', 'localidad',
-        'codigo_postal', 'telefono', 'email', 'web', 'descripcion_publica', 'activo'
+        'codigo_postal', 'telefono', 'email', 'web', 'descripcion_publica', 'activo',
+        'holiday_auto_enabled', 'holiday_country_code', 'holiday_region_code',
+        'holiday_types', 'holiday_years_ahead'
     ]
     for field in editable_fields:
         if field in data:
             setattr(establishment, field, data[field])
 
+    # Normaliza region si viene vacía
+    if 'holiday_region_code' in data and not data['holiday_region_code']:
+        establishment.holiday_region_code = None
+
     try:
         db.session.commit()
-        # Devolvemos PRIVADO para que el front vea los campos actualizados
         return jsonify(establishment.to_private_dict()), 200
     except Exception as e:
         db.session.rollback()
@@ -321,7 +319,7 @@ def update_establishment(establishment_id):
 @jwt_required()
 def delete_establishment(establishment_id):
     provider_id = get_provider_id_from_jwt()
-    if not provider_id: 
+    if not provider_id:
         return jsonify({"msg": "Identidad del token inválida"}), 422
 
     establishment = Establishment.query.get(establishment_id)
@@ -373,8 +371,6 @@ def get_establishment_appointments(establishment_id):
     except ValueError:
         return jsonify({"msg": "Formato de fecha inválido. Usa YYYY-MM-DD."}), 400
 
-    # Importante: si Appointment.start_time es datetime (UTC), el filtro
-    # por fecha directa puede requerir normalización; mantenemos tu lógica.
     query = Appointment.query.join(Service).filter(
         Service.establishment_id == establishment_id,
         Appointment.start_time >= start_date,
@@ -382,8 +378,8 @@ def get_establishment_appointments(establishment_id):
     )
 
     appointments = query.order_by(Appointment.start_time.asc()).all()
-
     return jsonify([appt.to_dict() for appt in appointments]), 200
+
 
 # ----- Helpers para festivos / blackouts -----
 
@@ -406,10 +402,9 @@ def _get_blackout_intervals_utc(establishment_id, day_local, provider_tz, timezo
         establishment_id=establishment_id, fecha=day_local, es_dia_completo=False
     ).all()
 
-    from datetime import datetime as dt  # alias local para evitar choque con import superior
+    from datetime import datetime as dt  # alias local
     partials_utc = []
     for b in partials:
-        # Construimos intervalos en LOCAL del proveedor y convertimos a UTC
         start_local = dt.combine(day_local, b.hora_inicio, tzinfo=provider_tz)
         end_local   = dt.combine(day_local, b.hora_fin,   tzinfo=provider_tz)
         partials_utc.append((
@@ -421,18 +416,17 @@ def _get_blackout_intervals_utc(establishment_id, day_local, provider_tz, timezo
 def _is_public_holiday(establishment, day_local):
     """
     Opcional: festivos automáticos con python-holidays.
-    Por defecto, NO bloquea (block_public_holidays=False salvo que añadas el campo).
+    Por defecto NO bloquea, salvo que añadas un flag estilo block_public_holidays en el modelo.
     """
     block = getattr(establishment, "block_public_holidays", False)
     if not block:
         return False
     try:
-        import holidays as pyholidays
+        import holidays as pyholidays  # type: ignore
     except Exception:
-        # Si no tienes la librería instalada todavía, no bloquea por festivo
         return False
 
     country = getattr(establishment, "country_code", "ES")
-    region  = getattr(establishment, "region_code", None)  # ej. 'VC' para Comunitat Valenciana
+    region  = getattr(establishment, "region_code", None)  # ej. 'VC'
     hcal = pyholidays.country_holidays(country, subdiv=region, years=[day_local.year])
     return day_local in hcal

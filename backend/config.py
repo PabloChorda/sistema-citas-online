@@ -37,3 +37,4 @@ class Config:
     MAIL_USE_TLS = False
     MAIL_USE_SSL = False
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'notificaciones@citasonline.com')
+    CRON_SECRET = os.environ.get('CRON_SECRET', 'change-me')
