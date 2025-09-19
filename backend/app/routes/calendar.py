@@ -136,6 +136,11 @@ def create_blackout():
     if not est_id or not date_str:
         return jsonify({"msg": "Campos 'establishment_id' y 'date' son requeridos."}), 400
 
+    try:
+        est_id = int(est_id)
+    except (TypeError, ValueError):
+        return jsonify({"msg": "establishment_id inválido."}), 400
+
     est = Establishment.query.get(est_id)
     if not est or not est.activo:
         return jsonify({"msg": "Establecimiento no encontrado o inactivo."}), 404
@@ -156,6 +161,38 @@ def create_blackout():
             hora_fin = _parse_time(end_time_str)
             if hora_inicio >= hora_fin:
                 return jsonify({"msg": "'start_time' debe ser menor que 'end_time'."}), 400
+
+        # --- NUEVO: coherencia entre full-day y parciales / solapes ---
+        if is_full_day:
+            # impedir full-day si ya hay parciales ese día
+            partial_exists = CalendarBlackout.query.filter_by(
+                establishment_id=est_id,
+                fecha=fecha,
+                es_dia_completo=False
+            ).first()
+            if partial_exists:
+                return jsonify({"msg": "Ya existen bloqueos parciales ese día. Elimina los parciales antes de crear un bloqueo de día completo."}), 409
+        else:
+            # impedir parcial si ya hay full-day ese día
+            full_exists = CalendarBlackout.query.filter_by(
+                establishment_id=est_id,
+                fecha=fecha,
+                es_dia_completo=True
+            ).first()
+            if full_exists:
+                return jsonify({"msg": "Ese día está bloqueado completo. Elimina el bloqueo de día completo antes de crear parciales."}), 409
+
+            # impedir solape entre parciales del mismo día
+            overlapping_partial = CalendarBlackout.query.filter(
+                CalendarBlackout.establishment_id == est_id,
+                CalendarBlackout.fecha == fecha,
+                CalendarBlackout.es_dia_completo.is_(False),
+                CalendarBlackout.hora_inicio < hora_fin,
+                CalendarBlackout.hora_fin > hora_inicio,
+            ).first()
+            if overlapping_partial:
+                return jsonify({"msg": "Ya existe un bloqueo parcial que se solapa con esa franja."}), 409
+        # --- FIN NUEVO ---
 
         blackout = CalendarBlackout(
             establishment_id=est_id,
