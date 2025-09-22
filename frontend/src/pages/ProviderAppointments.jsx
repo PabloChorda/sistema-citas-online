@@ -18,6 +18,20 @@ const toYYYYMMDD = (date) => {
   return `${y}-${m}-${d}`;
 };
 
+const overlaps = (aStart, aEnd, bStart, bEnd) => {
+  // aStart/aEnd/bStart/bEnd en "HH:MM" o "HH:MM:SS"
+  const norm = (t) => (t.length === 5 ? `${t}:00` : t);
+  const toMin = (t) => {
+    const [hh, mm, ss] = norm(t).split(':').map(Number);
+    return hh * 60 + mm + (ss ? ss / 60 : 0);
+  };
+  const A0 = toMin(aStart);
+  const A1 = toMin(aEnd);
+  const B0 = toMin(bStart);
+  const B1 = toMin(bEnd);
+  return A0 < B1 && B0 < A1;
+};
+
 const ProviderAppointments = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -85,9 +99,10 @@ const ProviderAppointments = () => {
   // Helpers de errores para toasts
   const toastFromError = (e, fallback) => {
     const status = e?.response?.status ?? e?.statusCode ?? e?.status;
-    const msg = e?.response?.data?.msg || e?.message || fallback;
-    if (status === 409) toast.error('Ya existe un bloqueo igual para ese día.');
-    else if (status === 403) toast.error('No tienes permisos sobre este establecimiento.');
+    const serverMsg = e?.response?.data?.msg;
+    const msg = serverMsg || e?.message || fallback;
+    if (status === 409) toast.error(serverMsg || 'Conflicto: no se puede crear el bloqueo.');
+    else if (status === 403) toast.error(serverMsg || 'No tienes permisos sobre este establecimiento.');
     else if (status === 400) toast.error(msg || 'Solicitud inválida.');
     else toast.error(msg || fallback || 'Ha ocurrido un error.');
   };
@@ -191,7 +206,7 @@ const ProviderAppointments = () => {
                 end,
                 allDay: true,
                 display: 'background',
-                color: '#9CA3AF',
+                backgroundColor: '#9CA3AF',
                 extendedProps: { kind: 'blackout', raw: b },
               };
             } else {
@@ -205,7 +220,7 @@ const ProviderAppointments = () => {
                 end,
                 allDay: false,
                 display: 'background',
-                color: '#9CA3AF',
+                backgroundColor: '#9CA3AF',
                 extendedProps: { kind: 'blackout', raw: b },
               };
             }
@@ -243,6 +258,15 @@ const ProviderAppointments = () => {
 
   // Crear blackouts desde el panel
   const createFullDay = async () => {
+    // Validación cliente: si hay parciales en ese día, no permitir (coherente con backend)
+    const hasPartial = blackouts.some(
+      (b) => b.date === fdDate && !b.is_full_day
+    );
+    if (hasPartial) {
+      toast.error('Ya existen bloqueos parciales ese día. Elimina los parciales antes de crear un día completo.');
+      return;
+    }
+
     try {
       await createBlackout({
         establishmentId,
@@ -265,6 +289,28 @@ const ProviderAppointments = () => {
       toast.error('La hora de inicio debe ser menor que la hora de fin.');
       return;
     }
+
+    // Validación cliente: si hay full-day ese día, no permitir
+    const hasFullDay = blackouts.some(
+      (b) => b.date === pDate && b.is_full_day
+    );
+    if (hasFullDay) {
+      toast.error('Ese día está bloqueado completo. Elimina el bloqueo de día completo antes de crear parciales.');
+      return;
+    }
+
+    // Validación cliente: no solapar con otros parciales ya listados en el panel
+    const overlapsPartial = blackouts.some(
+      (b) =>
+        b.date === pDate &&
+        !b.is_full_day &&
+        overlaps(pStart, pEnd, b.start_time, b.end_time)
+    );
+    if (overlapsPartial) {
+      toast.error('Ya existe un bloqueo parcial que se solapa con esa franja.');
+      return;
+    }
+
     try {
       await createBlackout({
         establishmentId,
