@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { getAppointmentsForEstablishment } from '../services/establishmentService';
 import { cancelAppointment } from '../services/appointmentService';
 import { getBlackouts, createBlackout, deleteBlackout } from '../services/calendarService';
@@ -345,12 +345,26 @@ const ProviderAppointments = () => {
     <>
       <div className="page-wrapper">
         <header className="page-header">
-          <h1>Agenda de Citas</h1>
-          {establishmentName && (
-            <p>
-              Mostrando agenda para: <strong>{establishmentName}</strong>
-            </p>
-          )}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1>Agenda de Citas</h1>
+              {establishmentName && (
+                <p>
+                  Mostrando agenda para: <strong>{establishmentName}</strong>
+                </p>
+              )}
+            </div>
+            {establishmentId && (
+              <Link
+                className="inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                to={`/dashboard/provider/holidays?est_id=${encodeURIComponent(
+                  establishmentId
+                )}&name=${encodeURIComponent(establishmentName || '')}`}
+              >
+                Ajustes de festivos
+              </Link>
+            )}
+          </div>
         </header>
 
         <Card>

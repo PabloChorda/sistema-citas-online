@@ -16,24 +16,30 @@ export const getBlackouts = ({ establishmentId, from, to }) => {
 };
 
 /**
- * (Opcional) Festivos automáticos si implementas /api/calendar/holidays en backend.
- * @param {{ country?:string, region?:string, from?:string, to?:string, year?:number }} p
+ * (Opcional) Festivos desde Nager.Date (proxy backend).
+ * @param {{ country?:string, region?:string, from?:string, to?:string, year?:number, types?:string }} p
  * - country por defecto 'ES'
- * - region ejemplo 'VC' (Comunitat Valenciana)
+ * - region ejemplo 'ES-VC' (código Nager de la comunidad)
  * - from/to en "YYYY-MM-DD"
+ * - types ej: "Public,Bank"
  */
-export const getHolidays = ({ country = 'ES', region, from, to, year } = {}) => {
+export const getHolidays = ({ country = 'ES', region, from, to, year, types } = {}) => {
   const params = {
     country,
     ...(region ? { region } : {}),
     ...(from ? { date_from: from } : {}),
     ...(to ? { date_to: to } : {}),
     ...(year ? { year: String(year) } : {}),
+    ...(types ? { types } : {}),
   };
   return apiClient('/calendar/holidays', 'GET', null, { params });
 };
 
-// Crear blackout (requiere sesión de provider)
+/**
+ * Crear blackout (requiere sesión de provider)
+ * - Si isFullDay=true, NO envía start_time/end_time
+ * - Si isFullDay=false, startTime y endTime son obligatorios ("HH:MM")
+ */
 export const createBlackout = ({
   establishmentId,
   date,                // "YYYY-MM-DD"
@@ -41,7 +47,7 @@ export const createBlackout = ({
   startTime,           // "HH:MM" (si isFullDay=false)
   endTime,             // "HH:MM" (si isFullDay=false)
   name,
-  category
+  category,
 }) => {
   const payload = {
     establishment_id: Number(establishmentId),
@@ -54,15 +60,37 @@ export const createBlackout = ({
   return apiClient('/calendar/blackouts', 'POST', payload);
 };
 
+/**
+ * Actualizar blackout (placeholder)
+ * ⚠️ OJO: El backend aún no expone PUT /calendar/blackouts/:id.
+ * Si lo implementas después, esta función quedará lista.
+ */
 export const updateBlackout = (blackoutId, payload) =>
   apiClient(`/calendar/blackouts/${blackoutId}`, 'PUT', payload);
 
+/**
+ * Eliminar blackout (requiere sesión de provider y ser dueño del establecimiento)
+ */
 export const deleteBlackout = (blackoutId) =>
   apiClient(`/calendar/blackouts/${blackoutId}`, 'DELETE');
 
-export const seedHolidays = ({ establishmentId, country='ES', year, region, category='holiday', types='Public,Bank' }) => {
+/**
+ * Sembrar festivos como blackouts de día completo (idempotente en backend)
+ */
+export const seedHolidays = ({
+  establishmentId,
+  country = 'ES',
+  year,
+  region,
+  category = 'holiday',
+  types = 'Public,Bank',
+}) => {
   return apiClient('/calendar/blackouts/seed-holidays', 'POST', {
     establishment_id: Number(establishmentId),
-    country, year, region, category, types,
+    country,
+    year,
+    region,
+    category,
+    types,
   });
 };
