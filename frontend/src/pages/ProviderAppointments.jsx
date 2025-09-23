@@ -3,9 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
-import { getAppointmentsForEstablishment } from '../services/establishmentService';
+import { getAppointmentsForEstablishment, getEstablishmentById } from '../services/establishmentService';
 import { cancelAppointment } from '../services/appointmentService';
-import { getBlackouts, createBlackout, deleteBlackout } from '../services/calendarService';
+import { getBlackouts, createBlackout, deleteBlackout, seedHolidays } from '../services/calendarService';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import AppointmentDetailModal from '../components/provider/AppointmentDetailModal';
@@ -32,6 +32,13 @@ const overlaps = (aStart, aEnd, bStart, bEnd) => {
   return A0 < B1 && B0 < A1;
 };
 
+// Colores para eventos de fondo (blackouts)
+const BLACKOUT_COLORS = {
+  holiday: '#9CA3AF', // gris
+  manual: '#FBBF24',  // amarillo
+  other: '#9CA3AF',
+};
+
 const ProviderAppointments = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -51,6 +58,11 @@ const ProviderAppointments = () => {
   // Lista para el panel de blackouts
   const [blackouts, setBlackouts] = useState([]);
   const [loadingBlackouts, setLoadingBlackouts] = useState(false);
+
+  // Ajustes/estado del establecimiento (para seed rápido)
+  const [estSettings, setEstSettings] = useState(null);
+  const [seedYear, setSeedYear] = useState(new Date().getFullYear());
+  const [seedLoading, setSeedLoading] = useState(false);
 
   // Formulario: blackout día completo
   const [fdDate, setFdDate] = useState(toYYYYMMDD(new Date()));
@@ -101,7 +113,7 @@ const ProviderAppointments = () => {
     const status = e?.response?.status ?? e?.statusCode ?? e?.status;
     const serverMsg = e?.response?.data?.msg;
     const msg = serverMsg || e?.message || fallback;
-    if (status === 409) toast.error(serverMsg || 'Conflicto: no se puede crear el bloqueo.');
+    if (status === 409) toast.error(serverMsg || 'Conflicto: no se puede realizar la operación.');
     else if (status === 403) toast.error(serverMsg || 'No tienes permisos sobre este establecimiento.');
     else if (status === 400) toast.error(msg || 'Solicitud inválida.');
     else toast.error(msg || fallback || 'Ha ocurrido un error.');
@@ -124,6 +136,20 @@ const ProviderAppointments = () => {
       setLoadingBlackouts(false);
     }
   };
+
+  // Cargar ajustes del establecimiento (para seed rápido)
+  useEffect(() => {
+    const loadEst = async () => {
+      if (!establishmentId) return;
+      try {
+        const est = await getEstablishmentById(establishmentId);
+        setEstSettings(est || null);
+      } catch (e) {
+        console.warn('No se pudieron cargar ajustes del establecimiento', e);
+      }
+    };
+    loadEst();
+  }, [establishmentId]);
 
   // Monta calendario
   useEffect(() => {
@@ -193,6 +219,10 @@ const ProviderAppointments = () => {
           });
 
           const blackoutEvents = (Array.isArray(blk) ? blk : []).map((b) => {
+            const category = (b.category || '').toLowerCase();
+            const color =
+              category === 'manual' ? BLACKOUT_COLORS.manual : BLACKOUT_COLORS.holiday;
+
             if (b.is_full_day) {
               // evento de fondo día completo [date, date+1)
               const start = `${b.date}T00:00:00`;
@@ -206,7 +236,7 @@ const ProviderAppointments = () => {
                 end,
                 allDay: true,
                 display: 'background',
-                backgroundColor: '#9CA3AF',
+                backgroundColor: color,
                 extendedProps: { kind: 'blackout', raw: b },
               };
             } else {
@@ -220,7 +250,7 @@ const ProviderAppointments = () => {
                 end,
                 allDay: false,
                 display: 'background',
-                backgroundColor: '#9CA3AF',
+                backgroundColor: color,
                 extendedProps: { kind: 'blackout', raw: b },
               };
             }
@@ -341,11 +371,45 @@ const ProviderAppointments = () => {
     }
   };
 
+  const gotoHolidaySettings = () => {
+    const q = new URLSearchParams();
+    if (establishmentId) q.set('est_id', establishmentId);
+    if (establishmentName) q.set('name', establishmentName);
+    navigate(`/dashboard/provider/holiday-settings?${q.toString()}`);
+  };
+
+  const handleQuickSeed = async () => {
+    if (!establishmentId) return;
+    setSeedLoading(true);
+    try {
+      // Usa ajustes del establecimiento si existen; si no, defaults
+      const country = estSettings?.holiday_country_code || 'ES';
+      const region = estSettings?.holiday_region_code || undefined;
+      const types = estSettings?.holiday_types || 'Public,Bank';
+
+      await seedHolidays({
+        establishmentId,
+        country,
+        region,
+        year: Number(seedYear),
+        types,
+        category: 'holiday',
+      });
+      toast.success(`Festivos sembrados para ${seedYear}.`);
+      await refreshBlackoutsPanel();
+      calendarInstanceRef.current?.refetchEvents();
+    } catch (e) {
+      toastFromError(e, 'No se pudieron sembrar los festivos.');
+    } finally {
+      setSeedLoading(false);
+    }
+  };
+
   return (
     <>
       <div className="page-wrapper">
         <header className="page-header">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h1>Agenda de Citas</h1>
               {establishmentName && (
@@ -354,21 +418,66 @@ const ProviderAppointments = () => {
                 </p>
               )}
             </div>
-            {establishmentId && (
-              <Link
-                className="inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
-                to={`/dashboard/provider/holidays?est_id=${encodeURIComponent(
-                  establishmentId
-                )}&name=${encodeURIComponent(establishmentName || '')}`}
-              >
-                Ajustes de festivos
-              </Link>
-            )}
+
+            <div className="flex items-center gap-3">
+              {/* Leyenda */}
+              <div className="flex items-center gap-2 mr-2">
+                <span className="inline-flex items-center gap-1 text-xs text-gray-700">
+                  <span className="inline-block w-3 h-3 rounded" style={{ background: '#9CA3AF' }} />
+                  Festivo
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs text-gray-700">
+                  <span className="inline-block w-3 h-3 rounded" style={{ background: '#FBBF24' }} />
+                  Manual
+                </span>
+              </div>
+
+              {/* Botón Ajustes de festivos (corrige la ruta) */}
+              {establishmentId && (
+                <Link
+                  className="inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                  to={`/dashboard/provider/holiday-settings?est_id=${encodeURIComponent(
+                    establishmentId
+                  )}&name=${encodeURIComponent(establishmentName || '')}`}
+                >
+                  Ajustes de festivos
+                </Link>
+              )}
+            </div>
           </div>
         </header>
 
         <Card>
           <div ref={calendarEl}></div>
+        </Card>
+
+        {/* Acciones rápidas de festivos */}
+        <Card className="mt-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="text-xs text-gray-600">Sembrar festivos rápido</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="2000"
+                  max="2100"
+                  value={seedYear}
+                  onChange={(e) => setSeedYear(e.target.value)}
+                  className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+                <Button onClick={handleQuickSeed} disabled={seedLoading}>
+                  {seedLoading ? 'Sembrando…' : 'Sembrar año'}
+                </Button>
+              </div>
+              {estSettings && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Usando ajustes: país {estSettings.holiday_country_code || 'ES'}
+                  {estSettings.holiday_region_code ? `, región ${estSettings.holiday_region_code}` : ''}
+                  {estSettings.holiday_types ? `, tipos ${estSettings.holiday_types}` : ''}
+                </p>
+              )}
+            </div>
+          </div>
         </Card>
 
         {/* Panel de bloqueos */}
@@ -393,7 +502,19 @@ const ProviderAppointments = () => {
                         {b.is_full_day ? '(día completo)' : `(${b.start_time}–${b.end_time})`}
                       </div>
                       {b.name && <div className="text-gray-600">{b.name}</div>}
-                      {b.category && <div className="text-gray-400">{b.category}</div>}
+                      <div className="flex items-center gap-2">
+                        {b.category && <div className="text-gray-400">{b.category}</div>}
+                        <span
+                          className="inline-block w-3 h-3 rounded"
+                          title={b.category || 'holiday'}
+                          style={{
+                            background:
+                              (b.category || '').toLowerCase() === 'manual'
+                                ? BLACKOUT_COLORS.manual
+                                : BLACKOUT_COLORS.holiday,
+                          }}
+                        />
+                      </div>
                     </div>
                     <Button variant="danger" onClick={() => removeBlackout(b.id)}>
                       Eliminar
