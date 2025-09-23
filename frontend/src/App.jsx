@@ -111,7 +111,7 @@ export default function App() {
                 <Route path="admin/metrics" element={<AdminMetricsPage />} />
 
                 {/* ⚙️ NUEVA RUTA: Ajustes de festivos */}
-                <Route path="holidays" element={<ProviderHolidaySettings />} />
+                <Route path="holiday-settings" element={<ProviderHolidaySettings />} />
               </Route>
             </Route>
 

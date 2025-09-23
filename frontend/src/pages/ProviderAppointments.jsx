@@ -193,6 +193,9 @@ const ProviderAppointments = () => {
           });
 
           const blackoutEvents = (Array.isArray(blk) ? blk : []).map((b) => {
+            const isHoliday = (b.category || '').toLowerCase() === 'holiday';
+            const bg = isHoliday ? '#9CA3AF' /* gris */ : '#FBBF24' /* amarillo */;
+
             if (b.is_full_day) {
               // evento de fondo día completo [date, date+1)
               const start = `${b.date}T00:00:00`;
@@ -206,7 +209,7 @@ const ProviderAppointments = () => {
                 end,
                 allDay: true,
                 display: 'background',
-                backgroundColor: '#9CA3AF',
+                backgroundColor: bg,
                 extendedProps: { kind: 'blackout', raw: b },
               };
             } else {
@@ -220,7 +223,7 @@ const ProviderAppointments = () => {
                 end,
                 allDay: false,
                 display: 'background',
-                backgroundColor: '#9CA3AF',
+                backgroundColor: bg,
                 extendedProps: { kind: 'blackout', raw: b },
               };
             }
@@ -259,9 +262,7 @@ const ProviderAppointments = () => {
   // Crear blackouts desde el panel
   const createFullDay = async () => {
     // Validación cliente: si hay parciales en ese día, no permitir (coherente con backend)
-    const hasPartial = blackouts.some(
-      (b) => b.date === fdDate && !b.is_full_day
-    );
+    const hasPartial = blackouts.some((b) => b.date === fdDate && !b.is_full_day);
     if (hasPartial) {
       toast.error('Ya existen bloqueos parciales ese día. Elimina los parciales antes de crear un día completo.');
       return;
@@ -291,9 +292,7 @@ const ProviderAppointments = () => {
     }
 
     // Validación cliente: si hay full-day ese día, no permitir
-    const hasFullDay = blackouts.some(
-      (b) => b.date === pDate && b.is_full_day
-    );
+    const hasFullDay = blackouts.some((b) => b.date === pDate && b.is_full_day);
     if (hasFullDay) {
       toast.error('Ese día está bloqueado completo. Elimina el bloqueo de día completo antes de crear parciales.');
       return;
@@ -301,10 +300,7 @@ const ProviderAppointments = () => {
 
     // Validación cliente: no solapar con otros parciales ya listados en el panel
     const overlapsPartial = blackouts.some(
-      (b) =>
-        b.date === pDate &&
-        !b.is_full_day &&
-        overlaps(pStart, pEnd, b.start_time, b.end_time)
+      (b) => b.date === pDate && !b.is_full_day && overlaps(pStart, pEnd, b.start_time, b.end_time)
     );
     if (overlapsPartial) {
       toast.error('Ya existe un bloqueo parcial que se solapa con esa franja.');
@@ -334,10 +330,11 @@ const ProviderAppointments = () => {
     try {
       await deleteBlackout(id);
       toast.success('Bloqueo eliminado.');
-      await refreshBlackoutsPanel();
-      calendarInstanceRef.current?.refetchEvents();
     } catch (e) {
       toastFromError(e, 'No se pudo eliminar el blackout.');
+    } finally {
+      await refreshBlackoutsPanel();
+      calendarInstanceRef.current?.refetchEvents();
     }
   };
 
@@ -354,16 +351,38 @@ const ProviderAppointments = () => {
                 </p>
               )}
             </div>
-            {establishmentId && (
-              <Link
-                className="inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
-                to={`/dashboard/provider/holidays?est_id=${encodeURIComponent(
-                  establishmentId
-                )}&name=${encodeURIComponent(establishmentName || '')}`}
-              >
-                Ajustes de festivos
-              </Link>
-            )}
+
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Botón ajustes de festivos (ruta corregida) */}
+              {establishmentId && (
+                <Link
+                  className="inline-flex items-center rounded-lg border px-3 py-2 text-sm hover:bg-gray-50"
+                  to={`/dashboard/provider/holiday-settings?est_id=${encodeURIComponent(
+                    establishmentId
+                  )}&name=${encodeURIComponent(establishmentName || '')}`}
+                >
+                  Ajustes de festivos
+                </Link>
+              )}
+
+              {/* Leyenda: Festivo / Manual */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs leading-none"
+                  title="Bloqueos automáticos sembrados (festivos)"
+                >
+                  <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#9CA3AF' }} />
+                  <span className="whitespace-nowrap">Festivo</span>
+                </span>
+                <span
+                  className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs leading-none"
+                  title="Bloqueos manuales creados por ti"
+                >
+                  <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: '#FBBF24' }} />
+                  <span className="whitespace-nowrap">Manual</span>
+                </span>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -389,8 +408,7 @@ const ProviderAppointments = () => {
                   <li key={b.id} className="py-3 flex items-center justify-between">
                     <div className="text-sm">
                       <div className="font-medium">
-                        {b.date}{' '}
-                        {b.is_full_day ? '(día completo)' : `(${b.start_time}–${b.end_time})`}
+                        {b.date} {b.is_full_day ? '(día completo)' : `(${b.start_time}–${b.end_time})`}
                       </div>
                       {b.name && <div className="text-gray-600">{b.name}</div>}
                       {b.category && <div className="text-gray-400">{b.category}</div>}
