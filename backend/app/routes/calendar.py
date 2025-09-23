@@ -450,7 +450,7 @@ def internal_cron_seed_holidays():
         types = set((est.holiday_types or "Public,Bank").split(","))
         years_ahead = est.holiday_years_ahead or 0
 
-        # años objetivo
+        # años objetivo: del año actual hasta el actual + years_ahead (incluido)
         years = range(current_year, current_year + years_ahead + 1)
 
         inserted_sum = skipped_sum = 0

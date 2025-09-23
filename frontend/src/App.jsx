@@ -34,6 +34,7 @@ import ProviderWhatsAppQR from './pages/ProviderWhatsAppQR';
 import AdminMetricsPage from "./pages/AdminMetricsPage";
 import RoleRoute from './components/auth/RoleRoute';
 import VerifiedRoute from './components/auth/VerifiedRoute';
+import ProviderHolidaySettings from './pages/ProviderHolidaySettings';
 
 // Auth context
 import { useAuth } from './context/AuthContext';
@@ -108,6 +109,9 @@ export default function App() {
                 <Route path="staff/availability" element={<ManageStaffAvailability />} />
                 <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
                 <Route path="admin/metrics" element={<AdminMetricsPage />} />
+
+                {/* ⚙️ NUEVA RUTA: Ajustes de festivos */}
+                <Route path="holidays" element={<ProviderHolidaySettings />} />
               </Route>
             </Route>
 
