@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { getAppointmentsForEstablishment } from '../services/establishmentService';
 import { cancelAppointment } from '../services/appointmentService';
-import { getBlackouts, createBlackout, deleteBlackout } from '../services/calendarService';
+import { getBlackouts, createBlackout, deleteBlackout, updateBlackout } from '../services/calendarService';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import AppointmentDetailModal from '../components/provider/AppointmentDetailModal';
@@ -139,10 +139,35 @@ const ProviderAppointments = () => {
       },
       height: 'auto',
       allDaySlot: false,
+      selectable: true,       // << permite selección para preparar parciales
+      selectMirror: true,
+      eventDurationEditable: true,
+      eventStartEditable: true,
       eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false },
       views: {
         timeGridWeek: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' },
         timeGridDay: { slotMinTime: '07:00:00', slotMaxTime: '23:00:00' },
+      },
+
+      // Pre-rellena el formulario de parcial al seleccionar un rango
+      select: (info) => {
+        const start = info.start;
+        const end = info.end;
+
+        if (toYYYYMMDD(start) !== toYYYYMMDD(end)) {
+          toast.error('Selecciona dentro del mismo día para crear un bloqueo parcial.');
+          calendar.unselect();
+          return;
+        }
+
+        const d = toYYYYMMDD(start);
+        const s = start.toTimeString().slice(0, 5);
+        const e = end.toTimeString().slice(0, 5);
+
+        setPDate(d);
+        setPStart(s);
+        setPEnd(e);
+        toast.success(`Franja preparada: ${d} ${s}-${e}`);
       },
 
       // Actualiza el rango visible (para listar blackouts en el panel)
@@ -151,7 +176,7 @@ const ProviderAppointments = () => {
         setRangeTo(info.end);
       },
 
-      // Carga citas + blackouts como "background events"
+      // Carga citas + blackouts (parciales editables, full-day background)
       events: async (fetchInfo, successCallback, failureCallback) => {
         try {
           const startDate = fetchInfo.start.toISOString().split('T')[0];
@@ -181,6 +206,7 @@ const ProviderAppointments = () => {
               end: appt.end_time,
               backgroundColor: appt.estado === 'CONFIRMED' ? '#10B981' : '#EF4444',
               borderColor: appt.estado === 'CONFIRMED' ? '#059669' : '#DC2626',
+              editable: false,
               extendedProps: { fullAppointment: appt, kind: 'appointment' },
             };
           });
@@ -194,7 +220,7 @@ const ProviderAppointments = () => {
 
           const blackoutEvents = (Array.isArray(blk) ? blk : []).map((b) => {
             const isHoliday = (b.category || '').toLowerCase() === 'holiday';
-            const bg = isHoliday ? '#9CA3AF' /* gris */ : '#FBBF24' /* amarillo */;
+            const bg = isHoliday ? '#9CA3AF' /* gris festivo */ : '#FBBF24' /* amarillo manual */;
 
             if (b.is_full_day) {
               // evento de fondo día completo [date, date+1)
@@ -210,20 +236,25 @@ const ProviderAppointments = () => {
                 allDay: true,
                 display: 'background',
                 backgroundColor: bg,
+                editable: false,
                 extendedProps: { kind: 'blackout', raw: b },
               };
             } else {
-              // parcial en el mismo día
-              const start = `${b.date}T${b.start_time}`;
-              const end = `${b.date}T${b.end_time}`;
+              // parcial en el mismo día (editable)
+              const st = b.start_time.length === 5 ? `${b.start_time}:00` : b.start_time;
+              const et = b.end_time.length === 5 ? `${b.end_time}:00` : b.end_time;
+              const start = `${b.date}T${st}`;
+              const end = `${b.date}T${et}`;
               return {
                 id: `blk-${b.id}`,
                 title: b.name || `Bloqueo ${b.start_time}-${b.end_time}`,
                 start,
                 end,
                 allDay: false,
-                display: 'background',
+                display: 'auto',
                 backgroundColor: bg,
+                borderColor: '#6B7280',
+                editable: true, // << arrastrar / redimensionar
                 extendedProps: { kind: 'blackout', raw: b },
               };
             }
@@ -236,11 +267,94 @@ const ProviderAppointments = () => {
         }
       },
 
-      eventClick: (clickInfo) => {
-        // Ignora clicks sobre eventos de blackout (fondo)
-        if (clickInfo?.event?.extendedProps?.kind === 'blackout') return;
+      // Click: si es blackout parcial, renombrar; si es cita, abrir modal
+      eventClick: async (clickInfo) => {
+        const kind = clickInfo?.event?.extendedProps?.kind;
+        if (kind === 'blackout') {
+          const raw = clickInfo?.event?.extendedProps?.raw;
+          if (raw?.is_full_day) return; // ignoramos full-day (background)
+          const currentName = raw?.name || '';
+          const newName = window.prompt('Nombre del bloqueo:', currentName);
+          if (newName === null) return; // cancel
+          try {
+            await updateBlackout(raw.id, { name: newName });
+            toast.success('Bloqueo actualizado.');
+            calendar.refetchEvents();
+          } catch (e) {
+            const msg = e?.response?.data?.msg || e?.message || 'No se pudo actualizar el nombre.';
+            toast.error(msg);
+          }
+          return;
+        }
+        // Cita normal
         setSelectedEvent(clickInfo.event);
         setIsModalOpen(true);
+      },
+
+      // Drag/Drop: si es blackout parcial -> guardar nuevas horas (mismo día)
+      eventDrop: async (info) => {
+        const kind = info?.event?.extendedProps?.kind;
+        if (kind !== 'blackout') return;
+        const raw = info?.event?.extendedProps?.raw;
+        if (raw?.is_full_day) {
+          info.revert();
+          return;
+        }
+        const newStart = info.event.start;
+        const newEnd = info.event.end;
+        if (!newStart || !newEnd) { info.revert(); return; }
+
+        if (toYYYYMMDD(newStart) !== raw.date || toYYYYMMDD(newEnd) !== raw.date) {
+          toast.error('Mover a otro día no está permitido.');
+          info.revert();
+          return;
+        }
+
+        const start_time = newStart.toTimeString().slice(0, 5);
+        const end_time = newEnd.toTimeString().slice(0, 5);
+
+        try {
+          await updateBlackout(raw.id, { start_time, end_time });
+          toast.success('Bloqueo actualizado.');
+          calendar.refetchEvents();
+        } catch (e) {
+          const msg = e?.response?.data?.msg || e?.message || 'No se pudo mover el bloqueo.';
+          toast.error(msg);
+          info.revert();
+        }
+      },
+
+      // Resize: si es blackout parcial -> guardar nuevas horas (mismo día)
+      eventResize: async (info) => {
+        const kind = info?.event?.extendedProps?.kind;
+        if (kind !== 'blackout') return;
+        const raw = info?.event?.extendedProps?.raw;
+        if (raw?.is_full_day) {
+          info.revert();
+          return;
+        }
+        const newStart = info.event.start;
+        const newEnd = info.event.end;
+        if (!newStart || !newEnd) { info.revert(); return; }
+
+        if (toYYYYMMDD(newStart) !== raw.date || toYYYYMMDD(newEnd) !== raw.date) {
+          toast.error('Cambiar a otro día no está permitido.');
+          info.revert();
+          return;
+        }
+
+        const start_time = newStart.toTimeString().slice(0, 5);
+        const end_time = newEnd.toTimeString().slice(0, 5);
+
+        try {
+          await updateBlackout(raw.id, { start_time, end_time });
+          toast.success('Bloqueo actualizado.');
+          calendar.refetchEvents();
+        } catch (e) {
+          const msg = e?.response?.data?.msg || e?.message || 'No se pudo redimensionar el bloqueo.';
+          toast.error(msg);
+          info.revert();
+        }
       },
     });
 

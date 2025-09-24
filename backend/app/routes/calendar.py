@@ -247,6 +247,105 @@ def delete_blackout(blackout_id: int):
         db.session.rollback()  # <-- faltaban paréntesis
         current_app.logger.error(f"Error eliminando blackout {blackout_id}: {e}", exc_info=True)
         return jsonify({"msg": "Error interno al eliminar el blackout."}), 500
+    
+@calendar_bp.put("/calendar/blackouts/<int:blackout_id>")
+@jwt_required()
+def update_blackout(blackout_id: int):
+    """
+    PUT /api/calendar/blackouts/<id>
+    Body JSON (todos opcionales, pero al menos uno):
+    {
+      "name": str?,
+      "category": str?,
+      "start_time": "HH:MM" | "HH:MM:SS"  (solo si el blackout ES parcial)
+      "end_time":   "HH:MM" | "HH:MM:SS"  (solo si el blackout ES parcial)
+    }
+    Restricciones:
+    - No se puede convertir un full-day a parcial ni viceversa.
+    - Para parciales: start_time < end_time y no debe solapar con otros parciales del mismo día.
+    """
+    user = _get_current_user()
+    if not user:
+        return jsonify({"msg": "Token inválido."}), 422
+
+    blackout = CalendarBlackout.query.get(blackout_id)
+    if not blackout:
+        return jsonify({"msg": "Blackout no encontrado."}), 404
+
+    est = Establishment.query.get(blackout.establishment_id)
+    if not _provider_owns_establishment(user, est):
+        return jsonify({"msg": "No tienes permisos sobre este blackout."}), 403
+
+    data = request.get_json() or {}
+    name = data.get("name")
+    category = data.get("category")
+    start_time_str = data.get("start_time")
+    end_time_str   = data.get("end_time")
+
+    # No aceptamos togglear el tipo
+    is_full_day = blackout.es_dia_completo
+
+    try:
+        # Actualizaciones de nombre/categoría siempre permitidas
+        if name is not None:
+            blackout.nombre = name.strip() or None
+        if category is not None:
+            blackout.categoria = category.strip() or None
+
+        if is_full_day:
+            # Para full-day no permitimos tocar horas
+            if start_time_str is not None or end_time_str is not None:
+                return jsonify({"msg": "No se pueden editar horas de un bloqueo de día completo."}), 400
+        else:
+            # Es parcial: si llegan horas, hay que validar
+            new_start = blackout.hora_inicio
+            new_end   = blackout.hora_fin
+
+            if start_time_str is not None:
+                new_start = _parse_time(start_time_str)
+            if end_time_str is not None:
+                new_end = _parse_time(end_time_str)
+
+            if new_start is None or new_end is None:
+                return jsonify({"msg": "Para bloqueos parciales se requieren 'start_time' y 'end_time'."}), 400
+            if new_start >= new_end:
+                return jsonify({"msg": "'start_time' debe ser menor que 'end_time'."}), 400
+
+            # Coherencia con full-day (mismo día)
+            full_exists = CalendarBlackout.query.filter(
+                CalendarBlackout.id != blackout.id,
+                CalendarBlackout.establishment_id == blackout.establishment_id,
+                CalendarBlackout.fecha == blackout.fecha,
+                CalendarBlackout.es_dia_completo.is_(True),
+            ).first()
+            if full_exists:
+                return jsonify({"msg": "Ese día está bloqueado completo. Elimina el full-day antes de editar parciales."}), 409
+
+            # Solapes con otros parciales (mismo día)
+            overlapping = CalendarBlackout.query.filter(
+                CalendarBlackout.id != blackout.id,
+                CalendarBlackout.establishment_id == blackout.establishment_id,
+                CalendarBlackout.fecha == blackout.fecha,
+                CalendarBlackout.es_dia_completo.is_(False),
+                CalendarBlackout.hora_inicio < new_end,
+                CalendarBlackout.hora_fin > new_start,
+            ).first()
+            if overlapping:
+                return jsonify({"msg": "Ya existe un bloqueo parcial que se solapa con esa franja."}), 409
+
+            blackout.hora_inicio = new_start
+            blackout.hora_fin    = new_end
+
+        db.session.commit()
+        return jsonify(blackout.to_dict()), 200
+
+    except ValueError as ve:
+        db.session.rollback()
+        return jsonify({"msg": str(ve)}), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error actualizando blackout {blackout_id}: {e}", exc_info=True)
+        return jsonify({"msg": "Error interno al actualizar el blackout."}), 500
 
 
 # ======================== Festivos (Nager) =======================
