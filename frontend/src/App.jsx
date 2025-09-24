@@ -110,7 +110,7 @@ export default function App() {
                 <Route path="whatsapp-qr" element={<ProviderWhatsAppQR />} />
                 <Route path="admin/metrics" element={<AdminMetricsPage />} />
 
-                {/* ⚙️ NUEVA RUTA: Ajustes de festivos */}
+                {/* Ajustes de festivos */}
                 <Route path="holiday-settings" element={<ProviderHolidaySettings />} />
               </Route>
             </Route>
