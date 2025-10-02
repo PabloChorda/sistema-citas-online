@@ -1,6 +1,6 @@
 // frontend/src/pages/ProviderAppointments.jsx
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { getAppointmentsForEstablishment } from '../services/establishmentService';
@@ -49,6 +49,23 @@ const addDays = (d, n) => {
   return x;
 };
 
+// Paleta de colores por empleado
+const STAFF_COLORS = [
+  '#60A5FA', // azul
+  '#F472B6', // rosa
+  '#34D399', // verde
+  '#F59E0B', // ámbar
+  '#A78BFA', // violeta
+  '#FB7185', // rojo claro
+  '#22D3EE', // cian
+  '#F97316', // naranja
+];
+const colorForStaffId = (staffId) => {
+  if (staffId === undefined || staffId === null) return '#10B981'; // fallback (verde)
+  const idx = Math.abs(Number(staffId)) % STAFF_COLORS.length;
+  return STAFF_COLORS[idx];
+};
+
 const ProviderAppointments = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -68,6 +85,10 @@ const ProviderAppointments = () => {
   // Lista para el panel de blackouts
   const [blackouts, setBlackouts] = useState([]);
   const [loadingBlackouts, setLoadingBlackouts] = useState(false);
+
+  // --- NUEVO: Staff filter ---
+  const [staffOptions, setStaffOptions] = useState([]); // [{id:'all'|string, name:string}]
+  const [staffFilter, setStaffFilter] = useState('all');
 
   // Formulario: blackout día completo
   const [fdDate, setFdDate] = useState(toYYYYMMDD(new Date()));
@@ -388,11 +409,28 @@ const ProviderAppointments = () => {
           const endDate = fetchInfo.end.toISOString().split('T')[0];
 
           // Citas
-          const appointments = await getAppointmentsForEstablishment(
+          let appointments = await getAppointmentsForEstablishment(
             establishmentId,
             startDate,
             endDate
           );
+
+          // Construir staffOptions (a partir del rango actual)
+          const uniqueStaff = new Map(); // id -> name
+          appointments.forEach((appt) => {
+            const s = appt.staff_member;
+            if (s?.id !== undefined && s?.id !== null) {
+              const name = `${s.first_name || ''} ${s.last_name || ''}`.trim() || `Empleado ${s.id}`;
+              if (!uniqueStaff.has(String(s.id))) uniqueStaff.set(String(s.id), name);
+            }
+          });
+          setStaffOptions([{ id: 'all', name: 'Todos' }, ...Array.from(uniqueStaff, ([id, name]) => ({ id, name }))]);
+
+          // Filtrado client-side por empleado
+          if (staffFilter !== 'all') {
+            const filterId = String(staffFilter);
+            appointments = appointments.filter(a => String(a?.staff_member?.id || '') === filterId);
+          }
 
           const apptEvents = appointments.map((appt) => {
             const staffName = appt.staff_member
@@ -404,8 +442,9 @@ const ProviderAppointments = () => {
             let eventTitle = `${titlePrefix} - ${clientName}`;
             if (staffName) eventTitle += ` (con ${staffName})`;
 
-            const bg = appt.estado === 'CONFIRMED' ? '#10B981' : '#EF4444';
-            const border = appt.estado === 'CONFIRMED' ? '#059669' : '#DC2626';
+            const staffId = appt?.staff_member?.id;
+            const bg = colorForStaffId(staffId);
+            const border = appt.estado === 'CONFIRMED' ? '#111827' : '#6B7280';
 
             return {
               id: `appt-${appt.id}`,
@@ -414,7 +453,13 @@ const ProviderAppointments = () => {
               end: appt.end_time,
               backgroundColor: bg,
               borderColor: border,
-              extendedProps: { fullAppointment: appt, kind: 'appointment', _origBg: bg, _origBorder: border },
+              extendedProps: {
+                fullAppointment: appt,
+                kind: 'appointment',
+                _origBg: bg,
+                _origBorder: border,
+                staffId,
+              },
             };
           });
 
@@ -507,7 +552,8 @@ const ProviderAppointments = () => {
       calendarInstanceRef.current?.destroy();
       calendarInstanceRef.current = null;
     };
-  }, [establishmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // staffFilter depende para refetch de eventos
+  }, [establishmentId, staffFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     refreshBlackoutsPanel();
@@ -813,6 +859,23 @@ const ProviderAppointments = () => {
     ? countConflictsPartial(preparedRange.date, preparedRange.start, preparedRange.end)
     : 0;
 
+  // Leyenda de colores por empleado
+  const StaffLegend = useMemo(() => {
+    if (!staffOptions || staffOptions.length <= 1) return null;
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        {staffOptions
+          .filter((o) => o.id !== 'all')
+          .map((o) => (
+            <span key={o.id} className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs leading-none">
+              <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: colorForStaffId(o.id) }} />
+              <span className="whitespace-nowrap">{o.name}</span>
+            </span>
+          ))}
+      </div>
+    );
+  }, [staffOptions]);
+
   return (
     <>
       <div className="page-wrapper">
@@ -858,6 +921,25 @@ const ProviderAppointments = () => {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
+              {/* Filtro por empleado */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Empleado</label>
+                <select
+                  className="rounded-lg border border-gray-300 px-2 py-1 text-sm"
+                  value={staffFilter}
+                  onChange={(e) => {
+                    setStaffFilter(e.target.value);
+                    calendarInstanceRef.current?.refetchEvents();
+                  }}
+                >
+                  {staffOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Botón ajustes de festivos */}
               {establishmentId && (
                 <Link
@@ -870,7 +952,7 @@ const ProviderAppointments = () => {
                 </Link>
               )}
 
-              {/* Leyenda compacta a la derecha del botón */}
+              {/* Leyenda compacta Festivo/Manual */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span
                   className="inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs leading-none"
@@ -889,6 +971,9 @@ const ProviderAppointments = () => {
               </div>
             </div>
           </div>
+
+          {/* Leyenda colores por empleado */}
+          <div className="mt-3">{StaffLegend}</div>
         </header>
 
         <Card>
