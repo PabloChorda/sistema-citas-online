@@ -6,6 +6,7 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { getAppointmentsForEstablishment } from '../services/establishmentService';
 import { cancelAppointment } from '../services/appointmentService';
 import { getBlackouts, createBlackout, deleteBlackout, updateBlackout } from '../services/calendarService';
+import { getStaffForEstablishment, normalizeStaffList } from '../services/staffService';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import AppointmentDetailModal from '../components/provider/AppointmentDetailModal';
@@ -86,8 +87,8 @@ const ProviderAppointments = () => {
   const [blackouts, setBlackouts] = useState([]);
   const [loadingBlackouts, setLoadingBlackouts] = useState(false);
 
-  // --- NUEVO: Staff filter ---
-  const [staffOptions, setStaffOptions] = useState([]); // [{id:'all'|string, name:string}]
+  // --- Staff filter ---
+  const [staffOptions, setStaffOptions] = useState([{ id: 'all', name: 'Todos' }]);
   const [staffFilter, setStaffFilter] = useState('all');
 
   // Formulario: blackout día completo
@@ -353,6 +354,24 @@ const ProviderAppointments = () => {
     }
   };
 
+  // === Cargar staff del establecimiento (independiente de citas visibles) ===
+  useEffect(() => {
+    let cancelled = false;
+    const loadStaff = async () => {
+      if (!establishmentId) return;
+      try {
+        const raw = await getStaffForEstablishment(establishmentId /*, { includeInactive: true } */);
+        const normalized = normalizeStaffList(raw);
+        const opts = [{ id: 'all', name: 'Todos' }, ...normalized];
+        if (!cancelled) setStaffOptions(opts);
+      } catch {
+        if (!cancelled) setStaffOptions([{ id: 'all', name: 'Todos' }]);
+      }
+    };
+    loadStaff();
+    return () => { cancelled = true; };
+  }, [establishmentId]);
+
   // Montar calendario
   useEffect(() => {
     if (!calendarEl.current || !establishmentId || !window.FullCalendar) return;
@@ -408,25 +427,15 @@ const ProviderAppointments = () => {
           const startDate = fetchInfo.start.toISOString().split('T')[0];
           const endDate = fetchInfo.end.toISOString().split('T')[0];
 
-          // Citas
+          // Citas (pedimos al backend por staff cuando el filtro no es 'all')
           let appointments = await getAppointmentsForEstablishment(
             establishmentId,
             startDate,
-            endDate
+            endDate,
+            staffFilter && staffFilter !== 'all' ? staffFilter : null
           );
 
-          // Construir staffOptions (a partir del rango actual)
-          const uniqueStaff = new Map(); // id -> name
-          appointments.forEach((appt) => {
-            const s = appt.staff_member;
-            if (s?.id !== undefined && s?.id !== null) {
-              const name = `${s.first_name || ''} ${s.last_name || ''}`.trim() || `Empleado ${s.id}`;
-              if (!uniqueStaff.has(String(s.id))) uniqueStaff.set(String(s.id), name);
-            }
-          });
-          setStaffOptions([{ id: 'all', name: 'Todos' }, ...Array.from(uniqueStaff, ([id, name]) => ({ id, name }))]);
-
-          // Filtrado client-side por empleado
+          // (Por compatibilidad) Si el backend aún no filtra por staffId, filtramos en cliente:
           if (staffFilter !== 'all') {
             const filterId = String(staffFilter);
             appointments = appointments.filter(a => String(a?.staff_member?.id || '') === filterId);
@@ -442,8 +451,8 @@ const ProviderAppointments = () => {
             let eventTitle = `${titlePrefix} - ${clientName}`;
             if (staffName) eventTitle += ` (con ${staffName})`;
 
-            const staffId = appt?.staff_member?.id;
-            const bg = colorForStaffId(staffId);
+            const sId = appt?.staff_member?.id;
+            const bg = colorForStaffId(sId);
             const border = appt.estado === 'CONFIRMED' ? '#111827' : '#6B7280';
 
             return {
@@ -458,7 +467,7 @@ const ProviderAppointments = () => {
                 kind: 'appointment',
                 _origBg: bg,
                 _origBorder: border,
-                staffId,
+                staffId: sId,
               },
             };
           });
