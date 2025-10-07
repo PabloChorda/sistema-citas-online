@@ -143,7 +143,7 @@ def get_available_slots(establishment_id):
                 working_intervals.append({
                     "staff_id": member.id,
                     "start": datetime.combine(start_of_day_local.date(), rule.hora_inicio, tzinfo=provider_tz),
-                    "end": datetime.combine(start_of_day_local.date(), rule.hora_fin, tzinfo=provider_tz)
+                    "end": datetime.combine(start_of_day_local.date(), rule.hora_fin,   tzinfo=provider_tz)
                 })
     else:
         rules = AvailabilityRule.query.filter_by(
@@ -157,7 +157,7 @@ def get_available_slots(establishment_id):
         working_intervals = [{
             "staff_id": None,
             "start": datetime.combine(start_of_day_local.date(), rule.hora_inicio, tzinfo=provider_tz),
-            "end": datetime.combine(start_of_day_local.date(), rule.hora_fin, tzinfo=provider_tz)
+            "end": datetime.combine(start_of_day_local.date(), rule.hora_fin,   tzinfo=provider_tz)
         } for rule in rules]
 
     # --- 4. Generación de huecos ---
@@ -346,7 +346,13 @@ def get_establishment_appointments(establishment_id):
     GET /api/establishments/<id>/appointments
     -----------------------------------------
     Obtiene las citas de un establecimiento para un rango de fechas.
-    Acepta parámetros 'start' y 'end' (YYYY-MM-DD).
+    Acepta parámetros:
+      - 'start' y 'end' (YYYY-MM-DD)  ✅
+      - o 'start_date' y 'end_date' (YYYY-MM-DD) ✅ (compatibilidad)
+    Opcionales:
+      - 'staff_id' para filtrar por empleado
+      - 'status' (p.ej. CONFIRMED, PENDING_PROVIDER, CANCELLED). Si viene con
+        varios separados por coma, se aplicará un IN.
     """
     provider_id = get_provider_id_from_jwt()
     if not provider_id:
@@ -359,23 +365,43 @@ def get_establishment_appointments(establishment_id):
     if establishment.provider_id != provider_id:
         return jsonify({"msg": "No tienes permiso para ver las citas de este establecimiento."}), 403
 
-    start_str = request.args.get('start')
-    end_str = request.args.get('end')
+    # Soporta 'start/end' y 'start_date/end_date'
+    start_str = request.args.get('start') or request.args.get('start_date')
+    end_str   = request.args.get('end')   or request.args.get('end_date')
 
     if not start_str or not end_str:
-        return jsonify({"msg": "Los parámetros 'start' y 'end' son requeridos."}), 400
+        return jsonify({"msg": "Los parámetros 'start' y 'end' (o 'start_date' y 'end_date') son requeridos."}), 400
 
     try:
         start_date = datetime.strptime(start_str, '%Y-%m-%d').date()
-        end_date = datetime.strptime(end_str, '%Y-%m-%d').date()
+        end_date   = datetime.strptime(end_str,   '%Y-%m-%d').date()
     except ValueError:
         return jsonify({"msg": "Formato de fecha inválido. Usa YYYY-MM-DD."}), 400
 
+    # Normalizamos a datetimes UTC (inicio del día y del día siguiente)
+    # end_date se toma como EXCLUSIVO (estilo FullCalendar)
+    start_dt_utc = datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+    end_dt_utc   = datetime.combine(end_date,   time.min, tzinfo=timezone.utc)
+
+    # Filtros opcionales
+    staff_id = request.args.get('staff_id', type=int)
+    status_param = request.args.get('status')  # Puede ser simple o lista separada por comas
+
     query = Appointment.query.join(Service).filter(
         Service.establishment_id == establishment_id,
-        Appointment.start_time >= start_date,
-        Appointment.start_time < end_date
+        Appointment.start_time >= start_dt_utc,
+        Appointment.start_time < end_dt_utc
     )
+
+    if staff_id is not None:
+        query = query.filter(Appointment.staff_id == staff_id)
+
+    if status_param:
+        statuses = [s.strip() for s in status_param.split(',') if s.strip()]
+        if len(statuses) == 1:
+            query = query.filter(Appointment.estado == statuses[0])
+        elif len(statuses) > 1:
+            query = query.filter(Appointment.estado.in_(statuses))
 
     appointments = query.order_by(Appointment.start_time.asc()).all()
     return jsonify([appt.to_dict() for appt in appointments]), 200
