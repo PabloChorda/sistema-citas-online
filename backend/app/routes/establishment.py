@@ -295,12 +295,23 @@ def update_establishment(establishment_id):
     editable_fields = [
         'nombre', 'direccion_completa', 'provincia', 'localidad',
         'codigo_postal', 'telefono', 'email', 'web', 'descripcion_publica', 'activo',
+        'has_multiple_staff',
         'holiday_auto_enabled', 'holiday_country_code', 'holiday_region_code',
         'holiday_types', 'holiday_years_ahead'
     ]
     for field in editable_fields:
         if field in data:
             setattr(establishment, field, data[field])
+    for field in editable_fields:
+        if field in data:
+            # Coerciones suaves para booleanos que podrían venir como string
+            if field in ('has_multiple_staff', 'holiday_auto_enabled', 'activo'):
+                val = data[field]
+                if isinstance(val, str):
+                    val = val.strip().lower() in ('1', 'true', 't', 'yes', 'y')
+                setattr(establishment, field, bool(val))
+            else:
+                setattr(establishment, field, data[field])
 
     # Normaliza region si viene vacía
     if 'holiday_region_code' in data and not data['holiday_region_code']:

@@ -22,6 +22,7 @@ const EditEstablishment = () => {
     telefono: '',
     email: '',
     activo: true,
+    has_multiple_staff: false,
   });
 
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,8 @@ const EditEstablishment = () => {
           telefono: data?.telefono != null ? String(data.telefono) : '',
           email: data?.email ?? '',
           activo: data?.activo !== undefined ? !!data.activo : true,
+          has_multiple_staff:
+            data?.has_multiple_staff !== undefined ? !!data.has_multiple_staff : false,
         });
       } catch (err) {
         toast.error(err.message || 'No se pudieron cargar los datos del establecimiento.');
@@ -93,6 +96,7 @@ const EditEstablishment = () => {
       telefono: formData.telefono ? String(formData.telefono).trim() : '',
       email: formData.email.trim(),
       activo: !!formData.activo,
+      has_multiple_staff: !!formData.has_multiple_staff,
     };
 
     // Validaciones rápidas
@@ -257,6 +261,35 @@ const EditEstablishment = () => {
                 Establecimiento activo (visible para clientes)
               </span>
             </label>
+          </div>
+
+          <div className="pt-2">
+            <label className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                name="has_multiple_staff"
+                checked={formData.has_multiple_staff}
+                onChange={handleChange}
+                className="mt-1 h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span className="text-sm text-gray-900">
+                <span className="font-medium">Varios empleados (modo staff)</span>
+                <span className="block text-gray-600">
+                  Actívalo si ofreces citas con diferentes empleados. Podrás asignar citas a un empleado
+                  concreto, filtrar la agenda por empleado y permitir que el cliente elija empleado al
+                  reservar.
+                </span>
+              </span>
+            </label>
+            <div className="mt-2 text-xs text-gray-600">
+              Gestiona tu equipo en{' '}
+              <a
+                href={`/dashboard/provider/staff?est_id=${encodeURIComponent(establishmentId || '')}`}
+                className="underline hover:no-underline"
+              >
+                Empleados
+              </a>.
+            </div>
           </div>
 
           <div className="flex justify-end pt-4 gap-3">
