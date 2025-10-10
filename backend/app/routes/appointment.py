@@ -346,3 +346,165 @@ def _pick_free_staff(service: Service, start_utc: datetime, end_utc: datetime):
         return st.id  # candidato válido
 
     return None
+
+@appointment_bp.route('/appointments/<int:appointment_id>', methods=['PATCH'])
+@jwt_required()
+def patch_appointment(appointment_id):
+    """
+    PATCH /api/appointments/<id>
+
+    Permisos:
+      - Solo el provider dueño del establecimiento de la cita puede modificar.
+
+    Payload (todos opcionales):
+      - staff_id: int | null
+      - start_time: ISO 8601 (UTC o con offset)
+      - estado: str
+      - notas_cliente: str
+      - notas_internas: str
+
+    Reglas:
+      - Si staff_id != null:
+          * Debe pertenecer al establecimiento y estar activo.
+          * Debe ofrecer el servicio de la cita.
+          * No puede tener otra cita solapada (CONFIRMED/PENDING_PROVIDER) en el intervalo.
+      - Si cambia start_time (o el estado final queda/permanece CONFIRMED):
+          * Respetar blackouts (día completo y parciales).
+          * Respetar anti-solapes (por staff_id si hay staff asignado; si no y el local no es multi-staff, por establecimiento).
+    """
+    from .email_service import send_appointment_rescheduled_email  # opcional si luego quieres notificar
+
+    # --- Auth & permisos (provider dueño) ---
+    user_id = get_user_id_from_jwt()
+    if not user_id:
+        return jsonify({"msg": "Token inválido"}), 422
+
+    user = User.query.get(user_id)
+    if not user or user.role != 'provider' or not user.provider_profile:
+        return jsonify({"msg": "Solo el proveedor puede modificar esta cita."}), 403
+
+    appt = Appointment.query.get(appointment_id)
+    if not appt:
+        return jsonify({"msg": "Cita no encontrada."}), 404
+
+    service = appt.service
+    if not service or not service.is_active:
+        return jsonify({"msg": "Servicio de la cita no disponible."}), 409
+
+    est = service.establishment
+    if not est or est.provider_id != user.provider_profile.provider_id:
+        return jsonify({"msg": "No tienes permiso sobre esta cita."}), 403
+
+    # --- Entrada ---
+    data = request.get_json(silent=True) or {}
+    new_staff_id      = data.get('staff_id', '__UNCHANGED__')
+    new_start_iso     = data.get('start_time', '__UNCHANGED__')
+    new_estado        = data.get('estado', '__UNCHANGED__')
+    new_notas_cliente = data.get('notas_cliente', '__UNCHANGED__')
+    new_notas_internas= data.get('notas_internas', '__UNCHANGED__')
+
+    # Si no hay nada que cambiar
+    if all(v == '__UNCHANGED__' for v in [new_staff_id, new_start_iso, new_estado, new_notas_cliente, new_notas_internas]):
+        return jsonify({"msg": "Nada que actualizar"}), 400
+
+    # --- Estado efectivo de trabajo ---
+    effective_start_utc = appt.start_time
+    effective_end_utc   = appt.end_time
+    effective_staff_id  = appt.staff_id
+    effective_estado    = appt.estado
+
+    # Recalcular start/end si cambia start_time
+    if new_start_iso != '__UNCHANGED__':
+        try:
+            new_start_utc = datetime.fromisoformat(str(new_start_iso).replace('Z', '+00:00'))
+        except Exception:
+            return jsonify({"msg": "Formato de 'start_time' inválido."}), 400
+        if new_start_utc < datetime.now(timezone.utc):
+            return jsonify({"msg": "La nueva hora debe ser futura."}), 400
+        effective_start_utc = new_start_utc
+        effective_end_utc   = new_start_utc + timedelta(minutes=service.duracion_minutos)
+
+    # Validar/ajustar staff_id
+    if new_staff_id != '__UNCHANGED__':
+        if new_staff_id is None:
+            effective_staff_id = None  # desasigna
+        else:
+            try:
+                candidate_staff_id = int(new_staff_id)
+            except (TypeError, ValueError):
+                return jsonify({"msg": "El 'staff_id' debe ser entero o null."}), 400
+
+            staff = Staff.query.get(candidate_staff_id)
+            if not staff or staff.activo is False:
+                return jsonify({"msg": "Empleado no encontrado o inactivo."}), 400
+            if staff.establishment_id != est.id:
+                return jsonify({"msg": "El empleado no pertenece a este establecimiento."}), 400
+
+            # Debe ofrecer el servicio de la cita
+            offers = Staff.query.join(Staff.services).filter(
+                Staff.id == candidate_staff_id,
+                Service.id == service.id
+            ).first()
+            if not offers:
+                return jsonify({"msg": "Este empleado no ofrece el servicio de la cita."}), 400
+
+            effective_staff_id = candidate_staff_id
+
+    # ¿El estado final quedará en CONFIRMED?
+    target_estado = effective_estado if new_estado == '__UNCHANGED__' else str(new_estado).upper().strip()
+    will_be_confirmed = (target_estado == 'CONFIRMED') or (target_estado == '__UNCHANGED__' and effective_estado == 'CONFIRMED')
+
+    # Validaciones fuertes si queda CONFIRMED (o ya lo estaba y no cambia)
+    if will_be_confirmed:
+        # 1) Blackouts
+        conflict, reason = _blackout_conflict(est, effective_start_utc, effective_end_utc)
+        if conflict:
+            return jsonify({"msg": f"No disponible por bloqueo de calendario: {reason}."}), 409
+
+        # 2) Anti-solape
+        if effective_staff_id:
+            # Solapado para el mismo staff
+            clash = Appointment.query.join(Service).filter(
+                Appointment.id != appt.id,
+                Service.establishment_id == est.id,
+                Appointment.staff_id == effective_staff_id,
+                Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER']),
+                Appointment.start_time < effective_end_utc,
+                Appointment.end_time > effective_start_utc
+            ).first()
+            if clash:
+                return jsonify({"msg": "Este profesional ya tiene una cita en esa franja."}), 409
+        else:
+            # Si no hay staff asignado y el establecimiento NO es multi-staff, bloquea por establecimiento
+            if not est.has_multiple_staff:
+                clash = Appointment.query.join(Service).filter(
+                    Appointment.id != appt.id,
+                    Service.establishment_id == est.id,
+                    Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER']),
+                    Appointment.start_time < effective_end_utc,
+                    Appointment.end_time > effective_start_utc
+                ).first()
+                if clash:
+                    return jsonify({"msg": "Ya existe una cita en esa franja para este establecimiento."}), 409
+
+    # --- Aplicar cambios persistentes ---
+    if new_start_iso != '__UNCHANGED__':
+        appt.start_time = effective_start_utc
+        appt.end_time   = effective_end_utc
+    if new_staff_id != '__UNCHANGED__':
+        appt.staff_id   = effective_staff_id
+    if new_estado != '__UNCHANGED__':
+        appt.estado     = target_estado
+    if new_notas_cliente != '__UNCHANGED__':
+        appt.notas_cliente = new_notas_cliente
+    if new_notas_internas != '__UNCHANGED__':
+        appt.notas_internas = new_notas_internas
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error en PATCH cita {appointment_id}: {e}", exc_info=True)
+        return jsonify({"msg": "Error interno al actualizar la cita."}), 500
+
+    return jsonify(appt.to_dict()), 200
