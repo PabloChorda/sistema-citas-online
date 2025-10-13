@@ -96,15 +96,22 @@ export const getAllPublicEstablishments = () => {
 
 /**
  * Citas de un establecimiento (panel proveedor)
+ * Ahora acepta staffId opcional para filtrar en servidor.
  */
-export const getAppointmentsForEstablishment = (establishmentId, startDate, endDate) => {
+export const getAppointmentsForEstablishment = (establishmentId, startDate, endDate, staffId) => {
   if (!establishmentId || !startDate || !endDate) {
     return Promise.reject(new Error('Faltan parámetros para obtener la agenda.'));
   }
+
+  const params = { start: startDate, end: endDate };
+  if (staffId && staffId !== 'all') {
+    params.staff_id = staffId;
+  }
+
   return apiClient(
     `/establishments/${establishmentId}/appointments`,
     'GET',
     null,
-    { params: { start: startDate, end: endDate } }
+    { params }
   );
 };

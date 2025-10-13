@@ -435,8 +435,11 @@ const ProviderAppointments = () => {
             staffFilter && staffFilter !== 'all' ? staffFilter : null
           );
 
-          // (Por compatibilidad) Si el backend aún no filtra por staffId, filtramos en cliente:
-          if (staffFilter !== 'all') {
+          // Solo filtra en cliente si NO has enviado staff_id al servidor
+          if (!staffFilter || staffFilter === 'all') {
+            // no filtramos
+          } else if (!Array.isArray(appointments) || appointments.some(a => a.staff_member === undefined)) {
+            // fallback: backend no devolvió staff_member claro -> filtramos en cliente
             const filterId = String(staffFilter);
             appointments = appointments.filter(a => String(a?.staff_member?.id || '') === filterId);
           }
