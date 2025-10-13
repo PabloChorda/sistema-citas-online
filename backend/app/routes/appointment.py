@@ -160,33 +160,32 @@ def reschedule_appointment(appointment_id):
     """
     PUT /api/appointments/<id>/reschedule
     Reprograma una cita a una nueva fecha/hora.
-    Ahora permite que tanto el proveedor como el cliente (dueño) la usen.
+    Permiso: cliente dueño o proveedor dueño del establecimiento.
+    Valida blackouts y, si aplica, disponibilidad/solapes del staff asignado.
     """
-    # Import local para evitar NameError si no está cargado a nivel módulo
     from .email_service import send_appointment_rescheduled_email
 
     user_id = get_user_id_from_jwt()
-    if not user_id: return jsonify({"msg": "Token inválido"}), 422
+    if not user_id:
+        return jsonify({"msg": "Token inválido"}), 422
 
     user = User.query.get(user_id)
     appointment = Appointment.query.get(appointment_id)
-
     if not appointment:
         return jsonify({"msg": "Cita no encontrada."}), 404
 
-    # --- 1. LÓGICA DE PERMISOS ACTUALIZADA ---
+    # Permisos
     is_client_owner = (user.role == 'client' and appointment.user_id == user_id)
-    is_provider_owner = (user.role == 'provider' and user.provider_profile and 
+    is_provider_owner = (user.role == 'provider' and user.provider_profile and
                          appointment.service.establishment.provider_id == user.provider_profile.provider_id)
-
     if not (is_client_owner or is_provider_owner):
         return jsonify({"msg": "No tienes permiso para reprogramar esta cita."}), 403
 
-    # --- Validación del estado de la cita ---
+    # Estado válido
     if appointment.estado != 'CONFIRMED':
         return jsonify({"msg": "Solo se pueden reprogramar citas confirmadas."}), 400
 
-    # --- 2. NUEVA VALIDACIÓN: LÍMITE DE ANTELACIÓN DE 24 HORAS ---
+    # Límite antelación cliente (24h)
     if is_client_owner:
         time_until_appointment = appointment.start_time - datetime.now(timezone.utc)
         if time_until_appointment < timedelta(hours=24):
@@ -202,30 +201,73 @@ def reschedule_appointment(appointment_id):
         return jsonify({"msg": "Formato de 'new_start_time' inválido."}), 400
 
     service = appointment.service
+    est = service.establishment
     new_end_time_obj = new_start_time_obj + timedelta(minutes=service.duracion_minutos)
 
-    # --- BLOQUEO POR BLACKOUT (DÍA COMPLETO O PARCIAL) ---
-    conflict, reason = _blackout_conflict(service.establishment, new_start_time_obj, new_end_time_obj)
+    # Blackouts (día completo / parciales) -> 409
+    conflict, reason = _blackout_conflict(est, new_start_time_obj, new_end_time_obj)
     if conflict:
         return jsonify({"msg": f"No se puede reprogramar a esa fecha/franja: {reason}."}), 409
 
-    overlapping = Appointment.query.join(Service).filter(
-        Appointment.id != appointment_id,
-        Service.establishment_id == service.establishment_id,
-        Appointment.start_time < new_end_time_obj,
-        Appointment.end_time > new_start_time_obj,
-        Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER'])
-    ).first()
+    # Si la cita tiene staff asignado y el establecimiento es multi-staff, validar disponibilidad/solapes de ESE staff
+    if est.has_multiple_staff and appointment.staff_id:
+        # 1) Opcional: validar que el staff presta el servicio (si tu modelo lo expone)
+        try:
+            allowed_staff_ids = set(service.staff_ids or [])
+        except Exception:
+            allowed_staff_ids = set()
+        if allowed_staff_ids and appointment.staff_id not in allowed_staff_ids:
+            return jsonify({"msg": "El profesional asignado no está habilitado para este servicio."}), 409
 
-    if overlapping:
-        return jsonify({"msg": "El nuevo horario seleccionado ya no está disponible."}), 409
+        # 2) Disponibilidad del staff para ese día/horario
+        tzname = est.provider.timezone if est and est.provider else None
+        tz = ZoneInfo(tzname) if tzname else timezone.utc
+        start_local = new_start_time_obj.astimezone(tz)
+        end_local = new_end_time_obj.astimezone(tz)
+        day_map = {0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO'}
+        dow = day_map[start_local.weekday()]
 
+        rules = StaffAvailabilityRule.query.filter_by(staff_id=appointment.staff_id, dia_semana=dow).all()
+        covers = any(
+            datetime.combine(start_local.date(), r.hora_inicio, tzinfo=tz) <= start_local and
+            datetime.combine(start_local.date(), r.hora_fin, tzinfo=tz) >= end_local
+            for r in rules
+        )
+        if not covers:
+            return jsonify({"msg": "El profesional no trabaja en el horario seleccionado."}), 409
+
+        # 3) Solapes con citas del mismo staff
+        q = Appointment.query.join(Service).filter(
+            Appointment.id != appointment_id,
+            Service.establishment_id == est.id,
+            Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER']),
+            Appointment.start_time < new_end_time_obj,
+            Appointment.end_time > new_start_time_obj,
+            Appointment.staff_id == appointment.staff_id
+        )
+        overlapping = q.first()
+        if overlapping:
+            return jsonify({"msg": "El profesional ya tiene una cita en ese horario."}), 409
+    else:
+        # Establecimiento mono-staff o cita sin staff: mantén la política actual (evita solapes globales)
+        q = Appointment.query.join(Service).filter(
+            Appointment.id != appointment_id,
+            Service.establishment_id == est.id,
+            Appointment.estado.in_(['CONFIRMED', 'PENDING_PROVIDER']),
+            Appointment.start_time < new_end_time_obj,
+            Appointment.end_time > new_start_time_obj,
+        )
+        overlapping = q.first()
+        if overlapping:
+            return jsonify({"msg": "El nuevo horario seleccionado ya no está disponible."}), 409
+
+    # Aplicar cambios
     old_start_time = appointment.start_time
-    appointment.end_time = new_end_time_obj
     appointment.start_time = new_start_time_obj
-    
+    appointment.end_time = new_end_time_obj
+
     db.session.commit()
-    
+
     try:
         send_appointment_rescheduled_email(appointment, old_start_time)
     except Exception as e:
