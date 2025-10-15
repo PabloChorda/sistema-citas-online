@@ -295,63 +295,127 @@ const ProviderAppointments = () => {
     setSelectedBlackout(blkEvent);
   };
 
-  // Drag/Resize de bloques manuales parciales
+  // Drag/Resize de bloques y citas: blackout parcial manual + appointments
   const handleMoveResize = async (info) => {
     const ev = info.event;
     const raw = ev.extendedProps?.raw;
     const kind = ev.extendedProps?.kind;
 
-    if (kind !== 'blackout' || !raw) return;
-    const isHoliday = (raw.category || '').toLowerCase() === 'holiday';
-    if (isHoliday || raw.is_full_day) {
-      info.revert();
-      toast.error('Este bloqueo no se puede mover/redimensionar.');
-      return;
-    }
-
-    const start = ev.start;
-    const end = ev.end;
-    const startDate = toYYYYMMDD(start);
-    const endDate = toYYYYMMDD(end);
-
-    if (startDate !== endDate) {
-      info.revert();
-      toast.error('El bloqueo debe permanecer dentro del mismo día.');
-      return;
-    }
-    if (end <= start) {
-      info.revert();
-      toast.error('La hora de fin debe ser mayor que la de inicio.');
-      return;
-    }
-
-    const conflicts = countConflicts(start, end);
-    if (conflicts > 0) {
-      const ok = window.confirm(
-        `Este bloqueo se solapa con ${conflicts} cita(s) confirmada(s). ¿Quieres guardarlo igualmente?`
-      );
-      if (!ok) {
+    // --- 1) BLACKOUTS (parciales manuales) ---
+    if (kind === 'blackout') {
+      if (!raw) {
         info.revert();
         return;
       }
+
+      const isHoliday = (raw.category || '').toLowerCase() === 'holiday';
+      // Festivos y días completos no se pueden mover/redimensionar
+      if (isHoliday || raw.is_full_day) {
+        info.revert();
+        toast.error('Este bloqueo no se puede mover/redimensionar.');
+        return;
+      }
+
+      // Validaciones propias del blackout parcial dentro del mismo día
+      const start = ev.start;
+      const end = ev.end;
+      const startDate = toYYYYMMDD(start);
+      const endDate = toYYYYMMDD(end);
+
+      if (startDate !== endDate) {
+        info.revert();
+        toast.error('El bloqueo debe permanecer dentro del mismo día.');
+        return;
+      }
+      if (end <= start) {
+        info.revert();
+        toast.error('La hora de fin debe ser mayor que la de inicio.');
+        return;
+      }
+
+      // Conflictos con citas confirmadas
+      const conflicts = countConflicts(start, end);
+      if (conflicts > 0) {
+        const ok = window.confirm(
+          `Este bloqueo se solapa con ${conflicts} cita(s) confirmada(s). ¿Quieres guardarlo igualmente?`
+        );
+        if (!ok) {
+          info.revert();
+          return;
+        }
+      }
+
+      try {
+        await updateBlackout(raw.id, {
+          date: startDate,
+          start_time: fmtHM(start),
+          end_time: fmtHM(end),
+        });
+        toast.success('Bloqueo actualizado.');
+        await refreshBlackoutsPanel();
+        calendarInstanceRef.current?.refetchEvents();
+
+        // Si estaba resaltado, recalcular resaltado
+        if (selectedBlackout && selectedBlackout.id === ev.id) {
+          applyHighlightForBlackout(ev);
+        }
+      } catch (e) {
+        info.revert();
+        toastFromError(e, 'No se pudo actualizar el bloqueo.');
+      }
+      return;
     }
 
-    try {
-      await updateBlackout(raw.id, {
-        date: startDate,
-        start_time: fmtHM(start),
-        end_time: fmtHM(end),
-      });
-      toast.success('Bloqueo actualizado.');
-      await refreshBlackoutsPanel();
-      calendarInstanceRef.current?.refetchEvents();
-      if (selectedBlackout && selectedBlackout.id === ev.id) {
-        applyHighlightForBlackout(ev);
+    // --- 2) APPOINTMENTS: reprogramación real en backend ---
+    if (kind === 'appointment') {
+      try {
+        // ids tipo "appt-123"
+        const rawId = String(ev.id || '');
+        const match = rawId.match(/^appt-(\d+)$/);
+        if (!match) {
+          info.revert();
+          return;
+        }
+        const apptId = match[1];
+
+        // nueva hora de inicio (UTC ISO)
+        const newStartISO = ev.start.toISOString();
+
+        const base = (import.meta.env.VITE_API_BASE_URL || '') + '/api';
+        const token = localStorage.getItem('access_token') || '';
+
+        const res = await fetch(`${base}/appointments/${apptId}/reschedule`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ new_start_time: newStartISO }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          toast.error(err?.msg || 'No se pudo reprogramar esta cita.');
+          info.revert();
+          return;
+        }
+
+        // Sincroniza con lo que devuelve el backend (evita problemas de TZ)
+        const updated = await res.json().catch(() => null);
+        if (updated?.start_time && updated?.end_time) {
+          ev.setDates(new Date(updated.start_time), new Date(updated.end_time));
+        }
+
+        toast.success('Cita reprogramada');
+      } catch {
+        toast.error('Error al reprogramar. Se ha revertido el cambio.');
+        info.revert();
       }
-    } catch (e) {
-      info.revert();
-      toastFromError(e, 'No se pudo actualizar el bloqueo.');
+      return;
     }
+
+    // 3) Cualquier otro tipo → revert por seguridad
+    info.revert();
   };
 
   // === Cargar staff del establecimiento (independiente de citas visibles) ===
