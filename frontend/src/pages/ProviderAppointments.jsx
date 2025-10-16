@@ -418,7 +418,7 @@ const ProviderAppointments = () => {
     info.revert();
   };
 
-  // === Cargar staff del establecimiento (independiente de citas visibles) ===
+  // === Cargar staff del establecimiento (independiente de las citas visibles) ===
   useEffect(() => {
     let cancelled = false;
     const loadStaff = async () => {
