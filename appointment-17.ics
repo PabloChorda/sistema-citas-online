@@ -1,0 +1,16 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Sistema Citas Online//ES
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:appt-17@sistema-citas-online
+DTSTAMP:20251017T112427Z
+DTSTART:20251021T104500Z
+DTEND:20251021T114500Z
+SUMMARY:Tintado de pelo para Ana Chorda (con Estilista - Masajista)
+DESCRIPTION:Cliente: Ana Chorda\nProfesional: Estilista - Masajista\nEstablecimiento: Aviño style\nDirección: carles carbonell 95
+LOCATION:carles carbonell 95
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR

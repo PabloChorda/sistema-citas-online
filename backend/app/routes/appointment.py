@@ -1,6 +1,6 @@
 # backend/app/routes/appointment.py
 
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import (
@@ -22,6 +22,48 @@ def get_user_id_from_jwt():
         return int(get_jwt_identity())
     except (ValueError, TypeError):
         return None
+
+def _safe_person_name(obj, fallback_role_field='rol') -> str:
+    """
+    Devuelve un nombre 'Nombre Apellidos' válido aunque el modelo use otros campos.
+    - Prioriza first_name/last_name; si no existen, usa nombre/apellidos.
+    - Para Staff puede caer a 'rol' si no hay nombre.
+    """
+    if not obj:
+        return ''
+    first = (
+        getattr(obj, 'first_name', None)
+        or getattr(obj, 'nombre', None)
+        or ''
+    )
+    last = (
+        getattr(obj, 'last_name', None)
+        or getattr(obj, 'apellidos', None)
+        or ''
+    )
+    display = f"{first} {last}".strip()
+    if not display:
+        display = getattr(obj, fallback_role_field, None) or ''
+    return display.strip()
+
+def _ics_escape(text: str) -> str:
+    """Escapa caracteres especiales para ICS."""
+    if not text:
+        return ""
+    return (
+        str(text)
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\n", "\\n")
+    )
+
+def _fmt_ics(dt: datetime) -> str:
+    """Devuelve fecha ICS en UTC (TZID=Z)."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
 
 @appointment_bp.route('/appointments', methods=['POST'])
 @jwt_required()
@@ -50,11 +92,11 @@ def create_appointment():
         staff_id = data.get('staff_id')
     except (ValueError, TypeError):
         return jsonify({"msg": "Formato de service_id o start_time inválido."}), 400
-    
+
     service = Service.query.get(service_id)
     if not service or not service.is_active:
         return jsonify({"msg": "Servicio no encontrado o inactivo."}), 404
-        
+
     end_time_obj = start_time_obj + timedelta(minutes=service.duracion_minutos)
 
     # --- BLOQUEO POR BLACKOUT (DÍA COMPLETO O PARCIAL) ---
@@ -80,7 +122,7 @@ def create_appointment():
     if service.establishment.has_multiple_staff and staff_id:
         # Si se eligió/asignó un empleado, solo nos importa si ESE empleado está ocupado.
         query = query.filter(Appointment.staff_id == staff_id)
-    
+
     overlapping = query.first()
     if overlapping:
         return jsonify({"msg": "Este horario con este profesional acaba de ser reservado. Por favor, elige otro."}), 409
@@ -98,7 +140,7 @@ def create_appointment():
     )
     db.session.add(new_appointment)
     db.session.commit()
-    
+
     try:
         send_appointment_confirmation_emails(new_appointment)
     except Exception as e:
@@ -129,7 +171,7 @@ def cancel_appointment(appointment_id):
     if not appointment: return jsonify({"msg": "Cita no encontrada."}), 404
 
     is_client_owner = (user.role == 'client' and appointment.user_id == user_id)
-    is_provider_owner = (user.role == 'provider' and user.provider_profile and 
+    is_provider_owner = (user.role == 'provider' and user.provider_profile and
                          appointment.service.establishment.provider_id == user.provider_profile.provider_id)
 
     if not (is_client_owner or is_provider_owner):
@@ -137,7 +179,7 @@ def cancel_appointment(appointment_id):
 
     if str(appointment.estado).startswith('CANCELLED'):
         return jsonify({"msg": "Esta cita ya ha sido cancelada."}), 400
-        
+
     if appointment.start_time < datetime.now(timezone.utc):
         return jsonify({"msg": "No se puede cancelar una cita que ya ha comenzado o pasado."}), 400
 
@@ -145,7 +187,7 @@ def cancel_appointment(appointment_id):
     new_status = f'CANCELLED_BY_{cancelled_by_role.upper()}'
     appointment.estado = new_status
     db.session.commit()
-    
+
     try:
         send_appointment_cancellation_email(appointment, cancelled_by_role)
     except Exception as e:
@@ -280,7 +322,7 @@ def reschedule_appointment(appointment_id):
 def get_client_next_appointment():
     user_id = get_user_id_from_jwt()
     if not user_id: return jsonify({"msg": "Token inválido"}), 422
-    
+
     now_utc = datetime.now(timezone.utc)
     next_appointment = Appointment.query.filter(
         Appointment.user_id == user_id,
@@ -550,3 +592,102 @@ def patch_appointment(appointment_id):
         return jsonify({"msg": "Error interno al actualizar la cita."}), 500
 
     return jsonify(appt.to_dict()), 200
+
+
+# --- Nueva ruta: Descargar ICS de una cita ---
+@appointment_bp.route('/appointments/<int:appointment_id>/ics', methods=['GET'])
+@jwt_required()
+def download_appointment_ics(appointment_id):
+    """
+    GET /api/appointments/<id>/ics
+    Devuelve un .ics (text/calendar) con la cita.
+    Permisos: dueño cliente o proveedor dueño del establecimiento.
+    """
+    user_id = get_user_id_from_jwt()
+    if not user_id:
+        return jsonify({"msg": "Token inválido"}), 422
+
+    appt = Appointment.query.get(appointment_id)
+    if not appt:
+        return jsonify({"msg": "Cita no encontrada."}), 404
+
+    user = User.query.get(user_id)
+    service = appt.service
+    if not service:
+        return jsonify({"msg": "Servicio asociado no encontrado."}), 400
+    est = service.establishment
+    if not est:
+        return jsonify({"msg": "Establecimiento no encontrado."}), 400
+
+    # Permisos: cliente dueño o proveedor dueño
+    is_client_owner = (user.role == 'client' and appt.user_id == user_id)
+    is_provider_owner = (
+        user.role == 'provider'
+        and user.provider_profile
+        and est.provider_id == user.provider_profile.provider_id
+    )
+    if not (is_client_owner or is_provider_owner):
+        return jsonify({"msg": "No tienes permiso para descargar esta cita."}), 403
+
+    # Normaliza nombres
+    staff_obj = getattr(appt, 'staff', None) or getattr(appt, 'staff_member', None)
+    staff_name = _safe_person_name(staff_obj, fallback_role_field='rol')
+    client_name = _safe_person_name(getattr(appt, 'user', None), fallback_role_field='')
+
+    # Fechas ICS (en UTC, con fallback si vienen naive)
+    now_utc = datetime.now(timezone.utc)
+    dtstamp = _fmt_ics(now_utc)
+    dtstart = _fmt_ics(appt.start_time)
+    dtend   = _fmt_ics(appt.end_time)
+
+    # Campos de texto
+    service_name = service.nombre or "Cita"
+    summary_parts = [service_name]
+    if client_name:
+        summary_parts.append(f"para {client_name}")
+    if staff_name:
+        summary_parts.append(f"(con {staff_name})")
+    summary = " ".join(summary_parts)
+
+    est_name = est.nombre or ""
+    est_addr = est.direccion_completa or ""
+    location = est_addr or est_name or "Establecimiento"
+
+    description_lines = []
+    if client_name:
+        description_lines.append(f"Cliente: {client_name}")
+    if staff_name:
+        description_lines.append(f"Profesional: {staff_name}")
+    if est_name:
+        description_lines.append(f"Establecimiento: {est_name}")
+    if est_addr:
+        description_lines.append(f"Dirección: {est_addr}")
+    description = "\\n".join(_ics_escape(l) for l in description_lines)
+
+    uid = f"appt-{appt.id}@sistema-citas-online"  # ajusta el dominio si quieres
+    status = "CONFIRMED" if str(appt.estado).upper() == "CONFIRMED" else "TENTATIVE"
+
+    ics_lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Sistema Citas Online//ES",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:{_ics_escape(uid)}",
+        f"DTSTAMP:{dtstamp}",
+        f"DTSTART:{dtstart}",
+        f"DTEND:{dtend}",
+        f"SUMMARY:{_ics_escape(summary)}",
+        f"DESCRIPTION:{description}",
+        f"LOCATION:{_ics_escape(location)}",
+        f"STATUS:{status}",
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ]
+    ics_content = "\r\n".join(ics_lines) + "\r\n"
+
+    resp = make_response(ics_content, 200)
+    resp.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    resp.headers["Content-Disposition"] = f'attachment; filename="appointment-{appt.id}.ics"'
+    return resp
