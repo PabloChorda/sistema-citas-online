@@ -28,32 +28,31 @@ services:
     depends_on:
       - db_citas
 
-  # Nuevo: Redis para rate limiting (almacen compartido)
   redis:
     image: redis:7-alpine
     container_name: redis_rate
     restart: always
     command: ["redis-server", "--save", "", "--appendonly", "no"]
-    # No exponemos puerto; solo accesible dentro de la red de Compose
 
   backend:
     build:
       context: ./backend
     container_name: flask_backend
-    command: sh -c "flask db upgrade && flask run --host=0.0.0.0 --port=5000"
+    working_dir: /app
+    command: >
+      sh -c "
+      flask --app wsgi:app db upgrade || echo 'Sin migraciones (ok)';
+      flask --app wsgi:app run --host=0.0.0.0 --port=5000
+      "
     volumes:
       - ./backend:/app
-    working_dir: /app
     ports:
       - "5001:5000"
     env_file:
       - ./backend/.env
     environment:
-      FLASK_APP: run.py
-      # Solo sobrescribimos las variables que DEBEN ser diferentes en Docker
-      DB_HOST: db_citas
-      # Para Flask-Limiter con Redis:
-      LIMITER_STORAGE_URI: redis://redis:6379/0
+      PYTHONPATH: /app
+      FLASK_ENV: development
     depends_on:
       - db_citas
       - redis

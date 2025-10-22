@@ -1,20 +1,28 @@
-# Usa una imagen oficial de Python
+# backend/Dockerfile
 FROM python:3.11-slim
 
-# Establece el directorio de trabajo en el contenedor
+# Evita pyc y asegura logs inmediatos
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# IMPORTANTÍSIMO: que /app esté en el PYTHONPATH para poder importar "backend.*"
+ENV PYTHONPATH=/app
+
+# Opcional: te deja usar 'flask' sin --app cada vez
+ENV FLASK_APP=backend.wsgi
+
 WORKDIR /app
 
-# Copia el archivo de dependencias
-COPY requirements.txt .
+# Instala deps primero para cachear capas
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -U pip \
+ && pip install --no-cache-dir -r requirements.txt
 
-# Instala las dependencias
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copia el resto del código del proyecto
+# Copia el código
 COPY . .
 
-# Expone el puerto de Flask (interno)
-EXPOSE 5000
+# Asegúrate de que tu app escuche en este puerto
+EXPOSE 5001
 
-# Comando por defecto (se puede sobrescribir en docker-compose.yml)
-CMD ["flask", "run", "--host=0.0.0.0", "--port=5000"]
+# Arranque por defecto (si tu run.py inicia el servidor)
+CMD ["python", "-m", "backend.run"]

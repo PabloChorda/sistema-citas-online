@@ -2,42 +2,55 @@
 import os
 from dotenv import load_dotenv
 
-# Cargar variables de entorno desde .env (asume que .env está en esta misma carpeta 'backend')
-dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
-if os.path.exists(dotenv_path):
-    print(f"Cargando variables de entorno desde: {dotenv_path}")
-    load_dotenv(dotenv_path)
+# 1) Cargar .env (intentamos primero el de la raíz del proyecto /app/.env y
+#    si no existe, el de backend/.env)
+ROOT_DOTENV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+BACKEND_DOTENV = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+if os.path.exists(ROOT_DOTENV):
+    print(f"Cargando variables de entorno desde: {ROOT_DOTENV}")
+    load_dotenv(ROOT_DOTENV)
+elif os.path.exists(BACKEND_DOTENV):
+    print(f"Cargando variables de entorno desde: {BACKEND_DOTENV}")
+    load_dotenv(BACKEND_DOTENV)
 else:
-    print(f"ADVERTENCIA: Archivo .env no encontrado en {dotenv_path}")
+    print("ADVERTENCIA: No se encontró archivo .env en /app/.env ni en backend/.env")
 
-# Imprimir para verificar que las variables se cargaron (opcional, para depuración)
-print(f"DB_USER (desde run.py después de load_dotenv): {os.environ.get('DB_USER')}")
-print(f"FLASK_DEBUG (desde run.py después de load_dotenv): {os.environ.get('FLASK_DEBUG')}")
+print(f"DB_USER (run.py): {os.environ.get('DB_USER')}")
+print(f"FLASK_DEBUG (run.py): {os.environ.get('FLASK_DEBUG')}")
 
+# 2) IMPORTS CORRECTOS (desde backend.*)
+from backend import create_app, db
+from backend.models import User, Provider  # ajusta si tu módulo/models difiere
+# Config: usa get_config() si lo tienes; si no, usa Config directamente.
+try:
+    from backend.config import get_config
+    ConfigObj = get_config()
+except Exception:
+    from backend.config import Config
+    ConfigObj = Config
 
-# Importar create_app DESPUÉS de cargar .env y DESPUÉS de que config.py haya sido definido
-from app import create_app, db
-from app.models import User, Provider
-from config import Config
+# 3) Registra comandos CLI opcionales (si existen)
+try:
+    from backend.commands.reminders import send_reminders_command
+    HAS_REMINDERS = True
+except Exception as e:
+    print(f"(INFO) Comando reminders no disponible: {e}")
+    HAS_REMINDERS = False
 
-# --- 1. IMPORTAMOS NUESTRO NUEVO COMANDO ---
-from app.commands.reminders import send_reminders_command
+# 4) Crea la app
+app = create_app(ConfigObj)
 
-# Crear la aplicación pasando la CLASE de configuración
-app = create_app(Config)
+if HAS_REMINDERS:
+    app.cli.add_command(send_reminders_command)
 
-# --- 2. REGISTRAMOS EL COMANDO EN LA INSTANCIA DE LA APP ---
-# Esto hace que el comando "flask send-reminders" esté disponible.
-app.cli.add_command(send_reminders_command)
-
-# Contexto de aplicación para el shell de Flask (opcional pero útil)
+# 5) Shell context (útil para flask shell)
 @app.shell_context_processor
 def make_shell_context():
     return {'db': db, 'User': User, 'Provider': Provider}
 
 if __name__ == '__main__':
-    # Usar variables de entorno para debug y port si están definidas, sino valores por defecto.
-    debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1' # FLASK_DEBUG=1 para True
+    debug_mode = os.environ.get('FLASK_DEBUG', '0') in ('1', 'true', 'True')
     port_num = int(os.environ.get('PORT', 5001))
-    print(f"Iniciando Flask app en modo debug: {debug_mode}, puerto: {port_num}")
-    app.run(debug=debug_mode, port=port_num, host='0.0.0.0') # host='0.0.0.0' para acceder desde la red
+    print(f"Iniciando Flask app en modo debug={debug_mode}, puerto={port_num}")
+    app.run(host='0.0.0.0', port=port_num, debug=debug_mode)
