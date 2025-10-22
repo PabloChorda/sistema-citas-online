@@ -16,6 +16,21 @@ class Config:
         "isolation_level": "READ COMMITTED",
     }
 
+    # =========================
+    # 🔐 DEMO MODE (feature flag)
+    # =========================
+    DEMO_MODE = os.getenv('DEMO_MODE', 'false').strip().lower() == 'true'
+    DEMO_SECRET = os.getenv('DEMO_SECRET', '')
+
+    # =========================
+    # 🌐 CORS por lista de orígenes (separados por coma)
+    # ejemplo: "http://localhost:5173, https://tu-demo.netlify.app"
+    # =========================
+    CORS_ALLOWED_ORIGINS = [
+        o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+        if o.strip()
+    ]
+
     # Configuración de PostgreSQL leída de variables de entorno
     DB_USER = os.environ.get('DB_USER')
     DB_PASSWORD = os.environ.get('DB_PASSWORD')
@@ -37,4 +52,21 @@ class Config:
     MAIL_USE_TLS = False
     MAIL_USE_SSL = False
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'notificaciones@citasonline.com')
+
+    # 🔒 Otros secretos
     CRON_SECRET = os.environ.get('CRON_SECRET', 'change-me')
+
+# --- selector de config ---
+class DevelopmentConfig(Config):
+    DEBUG = True
+
+class ProductionConfig(Config):
+    DEBUG = False
+
+class TestingConfig(Config):
+    TESTING = True
+    DEBUG = True
+    SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URI", "sqlite:///:memory:")
+
+def get_config():
+    return Config
