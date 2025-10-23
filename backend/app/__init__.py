@@ -364,6 +364,20 @@ def create_app(config_class_object):
         @app.route("/")
         def root():
             return jsonify({"message": "API del Sistema de Citas Online"}), 200
+        
+        @app.route("/ready")
+        def ready():
+            try:
+                from app.models import User  # consulta muy ligera
+                _ = User.query.first()
+                return jsonify({"ready": True}), 200
+            except Exception as e:
+                app.logger.error("Ready check failed: %s", e, exc_info=True)
+                return jsonify({"ready": False}), 503
+
+        @app.route("/version")
+        def version():
+            return jsonify({"version": os.getenv("APP_VERSION", "demo")}), 200
 
         # 4) Verificación de config
         verify_critical_config(app)
