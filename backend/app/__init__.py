@@ -9,7 +9,7 @@ import time
 import click
 from flask import Flask, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, create_access_token  # <-- A) import añadido
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_mail import Mail
@@ -122,9 +122,64 @@ def register_demo_cli(app: Flask) -> None:
         help="Reinserta demo aunque existan datos.",
     )
     def seed_demo(force):
-        """Inserta/actualiza datos de demo de forma idempotente y sin autoflush prematuro."""
+        """Inserta/actualiza datos de demo (idempotente) y crea disponibilidad básica."""
         from app import db as _db
-        from app.models import User, Provider, Establishment, Service, Staff
+        from app.models import (
+            User,
+            Provider,
+            Establishment,
+            Service,
+            Staff,
+            AvailabilityRule,
+        )
+        from datetime import time as dtime
+
+        # ---------- utilidades para mapear campos dinámicamente ----------
+        def _first_in(names, cols):
+            for n in names:
+                if n in cols:
+                    return n
+            return None
+
+        def _build_rule_kwargs(est_id, dow, start_t, end_t):
+            """
+            Inspecciona columnas y devuelve kwargs compatibles con AvailabilityRule.
+            Si no encuentra mapeo razonable, devuelve None.
+            """
+            cols = set(AvailabilityRule.__table__.columns.keys())
+
+            # FK a establecimiento
+            est_fk = _first_in(["establishment_id", "est_id", "location_id"], cols)
+            if not est_fk:
+                return None
+
+            # campo día de la semana
+            day_field = _first_in(
+                ["day_of_week", "weekday", "day", "dow", "week_day"], cols
+            )
+
+            # campos de hora inicio/fin
+            start_field = _first_in(["start_time", "start", "from_time", "from"], cols)
+            end_field = _first_in(["end_time", "end", "to_time", "to"], cols)
+
+            # flag de recurrencia (si existiera)
+            recur_field = _first_in(["is_recurring", "recurring", "repeat"], cols)
+
+            kw = {est_fk: est_id}
+            if day_field:
+                kw[day_field] = dow
+            if start_field:
+                kw[start_field] = start_t
+            if end_field:
+                kw[end_field] = end_t
+            if recur_field:
+                kw[recur_field] = True
+
+            # Reglas mínimas: tener FK + al menos start y end
+            if start_field is None or end_field is None:
+                return None
+            return kw
+        # -----------------------------------------------------------------
 
         try:
             # 0) Limpieza fuerte opcional
@@ -132,6 +187,7 @@ def register_demo_cli(app: Flask) -> None:
                 # orden por FKs: hijos -> padres
                 _db.session.execute(Service.__table__.delete())
                 _db.session.execute(Staff.__table__.delete())
+                _db.session.execute(AvailabilityRule.__table__.delete())
                 _db.session.execute(Establishment.__table__.delete())
                 _db.session.execute(Provider.__table__.delete())
                 _db.session.execute(User.__table__.delete())
@@ -144,6 +200,7 @@ def register_demo_cli(app: Flask) -> None:
                 "svc1": False,
                 "svc2": False,
                 "staff": False,
+                "rules": False,
             }
 
             # 1) USER (idempotente por email)
@@ -162,16 +219,16 @@ def register_demo_cli(app: Flask) -> None:
                 _db.session.flush()  # asegura user.user_id
                 created["user"] = True
 
-            # 2) PROVIDER (PK = provider_id == user.user_id, NOT NULL: cif, verificado, activo)
+            # 2) PROVIDER (PK = provider_id == user.user_id)
             with _db.session.no_autoflush:
-                provider = Provider.query.get(user.user_id)  # PK lookup, evita autoflush
+                provider = Provider.query.get(user.user_id)  # PK lookup
             if not provider:
                 provider = Provider(
-                    provider_id=user.user_id,  # PK / FK a users.user_id
+                    provider_id=user.user_id,
                     nombre_comercial="Demo Spa",
-                    cif="B12345678",  # NOT NULL
-                    verificado=False,  # NOT NULL
-                    activo=True,  # NOT NULL
+                    cif="B12345678",
+                    verificado=False,
+                    activo=True,
                     timezone="Europe/Madrid",
                     # opcionales:
                     tipo_empresa=None,
@@ -184,10 +241,10 @@ def register_demo_cli(app: Flask) -> None:
                     direccion_fiscal=None,
                 )
                 _db.session.add(provider)
-                _db.session.flush()  # fija PK; importante para evitar NULL en autoflush
+                _db.session.flush()
                 created["provider"] = True
 
-            # 3) ESTABLISHMENT (NOT NULL de festivos y mínimos)
+            # 3) ESTABLISHMENT
             with _db.session.no_autoflush:
                 est = (
                     Establishment.query.filter_by(
@@ -204,19 +261,39 @@ def register_demo_cli(app: Flask) -> None:
                     direccion_completa="Calle Falsa 123, Madrid",
                     provincia="Madrid",
                     localidad="Madrid",
-                    # festivos (todos NOT NULL en tu esquema)
                     holiday_auto_enabled=False,
                     holiday_country_code="ES",
                     holiday_region_code=None,
-                    holiday_types=[],  # si es ARRAY/JSON, [] cumple NOT NULL
+                    holiday_types=[],  # si es ARRAY/JSON
                     holiday_years_ahead=0,
-                    # recomendables:
                     visible_en_busquedas=True,
                     activo=True,
                 )
                 _db.session.add(est)
                 _db.session.flush()  # asegura est.id
                 created["est"] = True
+
+            # 3.1) Reglas de disponibilidad 9:00–17:00 para todos los días (idempotente + robusto)
+            with _db.session.no_autoflush:
+                any_rule = (
+                    AvailabilityRule.query.filter_by(**{
+                        _first_in(["establishment_id", "est_id", "location_id"],
+                                  set(AvailabilityRule.__table__.columns.keys())) or "establishment_id": est.id
+                    }).first()
+                    if AvailabilityRule.__table__.columns
+                    else None
+                )
+
+            if not any_rule:
+                # crea 7 reglas (0..6); si tu enum usa otro mapeo, igualmente las columnas se rellenan correctamente
+                for dow in range(7):
+                    kw = _build_rule_kwargs(est.id, dow, dtime(9, 0), dtime(17, 0))
+                    if kw is None:
+                        # No se pudo mapear campos -> salta creación pero no falla seed
+                        continue
+                    _db.session.add(AvailabilityRule(**kw))
+                _db.session.flush()
+                created["rules"] = True
 
             # 4) SERVICES (único por (establishment_id, nombre))
             def ensure_service(establishment_id, nombre, defaults):
@@ -225,7 +302,6 @@ def register_demo_cli(app: Flask) -> None:
                         establishment_id=establishment_id, nombre=nombre
                     ).first()
                 if svc:
-                    # opcional: actualizar algunos campos si cambian
                     return False
                 svc = Service(
                     establishment_id=establishment_id,
@@ -282,12 +358,56 @@ def register_demo_cli(app: Flask) -> None:
             _db.session.commit()
             click.echo(
                 "[demo] OK. Nuevos -> user:{user}, provider:{provider}, est:{est}, "
-                "svc1:{svc1}, svc2:{svc2}, staff:{staff}".format(**created)
+                "svc1:{svc1}, svc2:{svc2}, staff:{staff}, rules:{rules}".format(**created)
             )
         except Exception as ex:
             _db.session.rollback()
             click.echo(f"[demo] ERROR: {ex}")
             raise
+
+    @demo_group.command("wipe")
+    def wipe_demo():
+        """Borra datos de demo (cuidado en entornos reales)."""
+        from app import db as _db
+        try:
+            from app.models import (
+                Appointment,
+                TimeBlock,
+                AvailabilityRule,
+                Staff,
+                Service,
+                Establishment,
+                Provider,
+                User,
+            )
+        except Exception:
+            Appointment = TimeBlock = AvailabilityRule = Staff = Service = Establishment = Provider = None
+            from app.models import User  # seguro existe
+
+        with _db.session.no_autoflush:
+            for Model in (Appointment, TimeBlock, AvailabilityRule, Service, Staff, Establishment, Provider):
+                if Model is not None:
+                    _db.session.execute(Model.__table__.delete())
+            _db.session.execute(User.__table__.delete().where(User.email == "demo@example.com"))
+        _db.session.commit()
+        click.echo("[demo] wipe completado.")
+
+    # --------- B) comando demo token (antes de añadir el grupo) ---------
+    @demo_group.command("token")
+    @click.option("--email", default="demo@example.com", help="Email del usuario para el token")
+    @click.option("--minutes", default=120, help="Minutos de validez")
+    def demo_token(email, minutes):
+        """Emite un JWT para el usuario indicado (por defecto, demo@example.com)."""
+        from datetime import timedelta
+        from app.models import User
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            click.echo(f"[demo] Usuario no encontrado: {email}")
+            raise SystemExit(1)
+        # identity: usa el PK real que esperen tus @jwt_required (user.user_id normalmente)
+        token = create_access_token(identity=str(user.user_id), expires_delta=timedelta(minutes=minutes))
+        click.echo(token)
+    # --------------------------------------------------------------------
 
     # Añadir el grupo a la app
     app.cli.add_command(demo_group, name="demo")
@@ -319,7 +439,7 @@ def create_app(config_class_object):
 
     # CORS
     allowed_origins = (
-        app.config.get("CORS_ALLOWED_ORIGENS")  # por si existe typo
+        app.config.get("CORS_ALLOWED_ORIGENS")
         or app.config.get("CORS_ALLOWED_ORIGINS")
         or []
     )
@@ -334,27 +454,53 @@ def create_app(config_class_object):
     with app.app_context():
         # 1) Importar modelos y aplicar shim para que 'from app.models ...' sea estable
         from . import models as _models  # noqa: F401
-
         sys.modules.setdefault("app.models", _models)
-        app.logger.debug(
-            "[APP] Shim aplicado: 'app.models' -> paquete real de modelos"
-        )
+        app.logger.debug("[APP] Shim aplicado: 'app.models' -> paquete real de modelos")
 
         # 2) Blueprints
         from .routes import bp_api
-
         app.register_blueprint(bp_api, url_prefix="/api")
 
         try:
             from .routes.admin import admin_bp
-
             app.register_blueprint(admin_bp, url_prefix="/api")
         except Exception:
             app.logger.debug("[APP] Blueprint 'admin' no disponible (OK)")
 
         from .routes.whatsapp import bp as bp_whatsapp
-
         app.register_blueprint(bp_whatsapp)
+
+        # --- C) DEMO READ-ONLY GUARD (dentro de app context, fuera de rutas) ---
+        DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() in {"1", "true", "yes", "on"}
+        DEMO_READONLY = os.getenv("DEMO_READONLY", "true").lower() in {"1", "true", "yes", "on"}
+
+        if DEMO_MODE and DEMO_READONLY:
+            from flask import request
+
+            # Añade aquí endpoints que SÍ pueden escribir en demo si los necesitas
+            DEMO_WRITE_WHITELIST = {
+                # (método, ruta)
+                # ("POST", "/api/lo-que-sea"),
+            }
+
+            @app.before_request
+            def _demo_read_only_guard():
+                # Protege sólo el prefijo API, deja /health, /ready, estáticos, etc.
+                if not request.path.startswith("/api"):
+                    return None
+
+                method = request.method.upper()
+                if method in {"POST", "PUT", "PATCH", "DELETE"}:
+                    if (method, request.path) in DEMO_WRITE_WHITELIST:
+                        return None
+                    # Bloquea por defecto
+                    return jsonify({
+                        "message": "Demo en modo solo-lectura",
+                        "detail": f"{method} {request.path} bloqueado en demo"
+                    }), 403
+
+            app.logger.info("Demo mode: READONLY guard activo")
+        # -----------------------------------------------------------------------
 
         # 3) Rutas utilitarias
         @app.route("/health")
@@ -364,7 +510,7 @@ def create_app(config_class_object):
         @app.route("/")
         def root():
             return jsonify({"message": "API del Sistema de Citas Online"}), 200
-        
+
         @app.route("/ready")
         def ready():
             try:
@@ -410,7 +556,6 @@ def create_app(config_class_object):
 
     try:
         from .commands.purge import register_cli
-
         register_cli(app)
     except Exception as ex:
         app.logger.debug(f"[APP] CLI 'purge' no inicializado: {ex}")
