@@ -9,7 +9,7 @@ import time
 import click
 from flask import Flask, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token  # <-- A) import añadido
+from flask_jwt_extended import JWTManager, create_access_token  # <-- import JWT + token
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_mail import Mail
@@ -355,6 +355,105 @@ def register_demo_cli(app: Flask) -> None:
                 _db.session.add(staff)
                 created["staff"] = True
 
+            # ---------- BLOQUE PEGADO: disponibilidad L–V 10–14 y 16–20 ----------
+            # --- Disponibilidad demo: L–V 10–14 y 16–20 para el establecimiento y el staff ---
+            from datetime import time as _t
+            from sqlalchemy import and_
+            from app.models import AvailabilityRule, StaffAvailabilityRule, day_of_week_enum as _dow
+
+            def _weekday_values():
+                """
+                Devuelve la lista de valores del enum para LUNES..VIERNES.
+                Soporta:
+                  - enums tipo texto: LUNES, MARTES, MIERCOLES/MIÉRCOLES, JUEVES, VIERNES
+                  - enums tipo numérico o texto de dígitos: 1..7 o 0..6 (cogemos 1..5 ó 0..4)
+                """
+                vals = list(getattr(_dow, "enums", []) or [])
+                if not vals:
+                    # fallback por si el enum no expone 'enums'
+                    # asumimos 0..6 y devolvemos 0..4
+                    return [0, 1, 2, 3, 4]
+
+                # normaliza para buscar por nombre
+                norm = {str(v).upper().replace("Í","I").replace("É","E"): v for v in vals}
+                names = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES"]
+
+                found = []
+                for n in names:
+                    v = norm.get(n)
+                    if v is not None:
+                        found.append(v)
+
+                if found:
+                    return found
+
+                # si no encontramos por nombre, intentamos por números 1..5 o 0..4
+                try:
+                    nums = [int(v) for v in vals]
+                    if set(range(1, 8)).issuperset(nums):  # 1..7
+                        return [1, 2, 3, 4, 5]
+                    # asume 0..6
+                    return [0, 1, 2, 3, 4]
+                except Exception:
+                    # último recurso: primeros 5 del enum
+                    return vals[:5]
+
+            def _ensure_est_rule(establishment_id, dia_semana, h_ini, h_fin, activo=True):
+                with db.session.no_autoflush:
+                    exists = AvailabilityRule.query.filter(
+                        and_(
+                            AvailabilityRule.establishment_id == establishment_id,
+                            AvailabilityRule.dia_semana == dia_semana,
+                            AvailabilityRule.hora_inicio == h_ini,
+                            AvailabilityRule.hora_fin == h_fin,
+                        )
+                    ).first()
+                if exists:
+                    # si quieres, podrías actualizar 'activo' si cambió
+                    if hasattr(exists, "activo") and exists.activo != activo:
+                        exists.activo = activo
+                    return False
+                db.session.add(AvailabilityRule(
+                    establishment_id=establishment_id,
+                    dia_semana=dia_semana,
+                    hora_inicio=h_ini,
+                    hora_fin=h_fin,
+                    activo=bool(activo),
+                ))
+                return True
+
+            def _ensure_staff_rule(staff_id, dia_semana, h_ini, h_fin):
+                with db.session.no_autoflush:
+                    exists = StaffAvailabilityRule.query.filter(
+                        and_(
+                            StaffAvailabilityRule.staff_id == staff_id,
+                            StaffAvailabilityRule.dia_semana == dia_semana,
+                            StaffAvailabilityRule.hora_inicio == h_ini,
+                            StaffAvailabilityRule.hora_fin == h_fin,
+                        )
+                    ).first()
+                if exists:
+                    return False
+                db.session.add(StaffAvailabilityRule(
+                    staff_id=staff_id,
+                    dia_semana=dia_semana,
+                    hora_inicio=h_ini,
+                    hora_fin=h_fin,
+                ))
+                return True
+
+            created_rules = {"est": 0, "staff": 0}
+            for dow in _weekday_values():
+                # tramos 10–14 y 16–20
+                for h_ini, h_fin in ((_t(10,0), _t(14,0)), (_t(16,0), _t(20,0))):
+                    if _ensure_est_rule(est.id, dow, h_ini, h_fin, activo=True):
+                        created_rules["est"] += 1
+                    if _ensure_staff_rule(staff.id, dow, h_ini, h_fin):
+                        created_rules["staff"] += 1
+
+            app.logger.info("[demo] Disponibilidad creada/asegurada -> %s", created_rules)
+            # ---------------------------------------------------------------------
+
             _db.session.commit()
             click.echo(
                 "[demo] OK. Nuevos -> user:{user}, provider:{provider}, est:{est}, "
@@ -392,7 +491,7 @@ def register_demo_cli(app: Flask) -> None:
         _db.session.commit()
         click.echo("[demo] wipe completado.")
 
-    # --------- B) comando demo token (antes de añadir el grupo) ---------
+    # token CLI para demo
     @demo_group.command("token")
     @click.option("--email", default="demo@example.com", help="Email del usuario para el token")
     @click.option("--minutes", default=120, help="Minutos de validez")
@@ -404,10 +503,8 @@ def register_demo_cli(app: Flask) -> None:
         if not user:
             click.echo(f"[demo] Usuario no encontrado: {email}")
             raise SystemExit(1)
-        # identity: usa el PK real que esperen tus @jwt_required (user.user_id normalmente)
         token = create_access_token(identity=str(user.user_id), expires_delta=timedelta(minutes=minutes))
         click.echo(token)
-    # --------------------------------------------------------------------
 
     # Añadir el grupo a la app
     app.cli.add_command(demo_group, name="demo")
@@ -470,36 +567,33 @@ def create_app(config_class_object):
         from .routes.whatsapp import bp as bp_whatsapp
         app.register_blueprint(bp_whatsapp)
 
-        # --- C) DEMO READ-ONLY GUARD (dentro de app context, fuera de rutas) ---
-        DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() in {"1", "true", "yes", "on"}
-        DEMO_READONLY = os.getenv("DEMO_READONLY", "true").lower() in {"1", "true", "yes", "on"}
+        # --- DEMO READ-ONLY GUARD con allowlist regex (después de blueprints) ---
+        from flask import request
+        import re
 
-        if DEMO_MODE and DEMO_READONLY:
-            from flask import request
+        # Solo usa el guard si DEMO_READONLY está activado (por defecto "1")
+        DEMO_READONLY = os.getenv("DEMO_READONLY", "1") in ("1", "true", "True")
 
-            # Añade aquí endpoints que SÍ pueden escribir en demo si los necesitas
-            DEMO_WRITE_WHITELIST = {
-                # (método, ruta)
-                # ("POST", "/api/lo-que-sea"),
-            }
+        # Patrón de rutas permitidas a escribir. Por defecto no permite nada.
+        ALLOWLIST = os.getenv("DEMO_WRITE_ALLOWLIST", r"^$")
+        # Sugerencia útil para una demo funcional (login/refresh y citas):
+        # ^/api/(auth/(login|refresh|token)|appointments($|/.*))$
+        _allow_re = re.compile(ALLOWLIST)
 
-            @app.before_request
-            def _demo_read_only_guard():
-                # Protege sólo el prefijo API, deja /health, /ready, estáticos, etc.
-                if not request.path.startswith("/api"):
+        @app.before_request
+        def _demo_guard():
+            if not DEMO_READONLY:
+                return None
+            # Bloquea métodos destructivos salvo rutas en allowlist
+            if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+                path = request.path or ""
+                if _allow_re.search(path):
                     return None
-
-                method = request.method.upper()
-                if method in {"POST", "PUT", "PATCH", "DELETE"}:
-                    if (method, request.path) in DEMO_WRITE_WHITELIST:
-                        return None
-                    # Bloquea por defecto
-                    return jsonify({
-                        "message": "Demo en modo solo-lectura",
-                        "detail": f"{method} {request.path} bloqueado en demo"
-                    }), 403
-
-            app.logger.info("Demo mode: READONLY guard activo")
+                return jsonify({
+                    "message": "Demo en modo solo-lectura",
+                    "detail": f"{request.method} {path} bloqueado en demo",
+                }), 403
+            return None
         # -----------------------------------------------------------------------
 
         # 3) Rutas utilitarias

@@ -1,0 +1,16 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Sistema Citas Online//ES
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:appt-1@sistema-citas-online
+DTSTAMP:20251024T095030Z
+DTSTART:20251027T100000Z
+DTEND:20251027T110000Z
+SUMMARY:Masaje relajante para Demo User (con terapeuta)
+DESCRIPTION:Cliente: Demo User\nProfesional: terapeuta\nEstablecimiento: Sede Central\nDirección: Calle Falsa 123\, Madrid
+LOCATION:Calle Falsa 123\, Madrid
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR
