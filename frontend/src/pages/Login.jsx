@@ -10,6 +10,7 @@ import Input from '../components/ui/Input';
 
 import { setAccessToken, setRefreshToken } from '../api/http';
 import { useAuth } from '../context/AuthContext';
+import DemoQuickLogin from "../components/demo/DemoQuickLogin";
 
 // Util: decodifica el JWT (solo payload)
 function decodeJwt(token) {
@@ -145,6 +146,9 @@ export default function Login() {
               {submitting ? 'Entrando…' : 'Entrar'}
             </Button>
           </form>
+
+          {/* Bloque de acceso rápido por token (solo aparece en VITE_DEMO_MODE=1) */}
+          <DemoQuickLogin className="mt-4" />
 
           <footer className="text-sm text-center text-gray-600 space-y-2">
             <p>

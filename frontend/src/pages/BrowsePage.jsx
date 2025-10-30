@@ -1,6 +1,6 @@
 // frontend/src/pages/BrowsePage.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { getAllPublicEstablishments } from '../services/establishmentService';
 
@@ -44,20 +44,37 @@ const BrowsePage = () => {
   const [establishments, setEstablishments] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // Evita doble ejecución del efecto en dev (StrictMode)
+  const didLoad = useRef(false);
+
   useEffect(() => {
-    const fetchEstablishments = async () => {
+    if (didLoad.current) return;
+    didLoad.current = true;
+
+    const ac = new AbortController();
+
+    (async () => {
       try {
         setLoading(true);
         const data = await getAllPublicEstablishments();
-        setEstablishments(data || []);
+        if (!ac.signal.aborted) {
+          // admite tanto array plano como objetos con items
+          const items = Array.isArray(data)
+            ? data
+            : (data && Array.isArray(data.items) ? data.items : []);
+          setEstablishments(items);
+        }
       } catch (err) {
-        toast.error('No se pudieron cargar los establecimientos.');
+        toast.error('No se pudieron cargar los establecimientos.', { id: 'establishments-load' });
         console.error('Error fetching public establishments:', err);
       } finally {
-        setLoading(false);
+        if (!ac.signal.aborted) {
+          setLoading(false);
+        }
       }
-    };
-    fetchEstablishments();
+    })();
+
+    return () => ac.abort();
   }, []);
 
   return (

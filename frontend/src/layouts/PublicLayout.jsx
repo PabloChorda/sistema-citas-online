@@ -1,4 +1,3 @@
-// frontend/src/layouts/PublicLayout.jsx
 import React from 'react';
 import { Link, Outlet, useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
@@ -6,6 +5,7 @@ import Footer from './Footer';
 import TokenBadge from '../components/auth/TokenBadge';
 import EmailVerificationBanner from '../components/auth/EmailVerificationBanner';
 import { useAuth } from '../context/AuthContext';
+import DemoBanner from '../components/DemoBanner';
 
 const PublicLayout = ({ handleLogout }) => {
   const { isAuthenticated, logout } = useAuth();
@@ -53,6 +53,14 @@ const PublicLayout = ({ handleLogout }) => {
                   <Button variant="outline" to="/login">
                     Iniciar Sesión
                   </Button>
+
+                  {/* 🔶 Botón directo a demo (solo en modo demo) */}
+                  {import.meta.env.VITE_DEMO_MODE === "1" ? (
+                    <Button variant="secondary" to="/login?demo=1">
+                      Probar demo
+                    </Button>
+                  ) : null}
+
                   <Button variant="primary" to="/register">
                     Registrarse
                   </Button>
@@ -62,6 +70,9 @@ const PublicLayout = ({ handleLogout }) => {
           </div>
         </nav>
       </header>
+
+      {/* 🔶 Banner de demo: una sola vez en el layout, debajo del header */}
+      <DemoBanner />
 
       {/* El main crece y empuja el footer abajo */}
       <main className="flex-grow">

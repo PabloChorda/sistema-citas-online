@@ -89,9 +89,17 @@ export const getAvailableSlots = (establishmentId, serviceId, date, staffId = nu
 
 /**
  * Listado público (marketplace/directorio)
+ * Devuelve SIEMPRE un array, normalizando distintas formas posibles del backend.
  */
-export const getAllPublicEstablishments = () => {
-  return apiClient('/public/establishments', 'GET');
+export const getAllPublicEstablishments = async () => {
+  const res = await apiClient('/public/establishments', 'GET');
+
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.items)) return res.items;
+  if (res && Array.isArray(res.data)) return res.data;
+  if (res && Array.isArray(res.results)) return res.results;
+
+  return [];
 };
 
 /**

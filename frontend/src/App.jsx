@@ -38,7 +38,6 @@ import ProviderHolidaySettings from './pages/ProviderHolidaySettings';
 
 // Auth context
 import { useAuth } from './context/AuthContext';
-import DemoBanner from './components/DemoBanner';
 
 // Decide índice de dashboard por rol
 function DashboardIndex() {
@@ -58,7 +57,7 @@ export default function App() {
 
   return (
     <Router>
-      <DemoBanner />
+      {/* ❌ QUITADO el DemoBanner global para evitar duplicados */}
       <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
 
       <Routes>
