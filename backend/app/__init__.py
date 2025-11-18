@@ -34,6 +34,25 @@ limiter = Limiter(
 # -----------------
 # Helpers
 # -----------------
+def _parse_origins(val):
+    """Acepta lista nativa, JSON array o CSV en string."""
+    if not val:
+        return []
+    if isinstance(val, (list, tuple, set)):
+        return list(val)
+    s = str(val).strip()
+    if s.startswith("["):
+        try:
+            import json
+            v = json.loads(s)
+            if isinstance(v, list):
+                return v
+        except Exception:
+            pass
+    # CSV: "http://a, http://b"
+    return [x.strip() for x in s.split(",") if x.strip()]
+
+
 def configure_logging(app: Flask) -> None:
     try:
         app.logger.setLevel(logging.INFO if not app.debug else logging.DEBUG)
@@ -535,15 +554,25 @@ def create_app(config_class_object):
     app.extensions.setdefault("migrate", migrate)
 
     # CORS
-    allowed_origins = (
-        app.config.get("CORS_ALLOWED_ORIGENS")
+    raw_origins = (
+        app.config.get("CORS_ALLOWED_ORIGENS")  # por si existe typo
         or app.config.get("CORS_ALLOWED_ORIGINS")
         or []
     )
+    allowed_origins = _parse_origins(raw_origins)
+
+    # En dev, si no hay nada, admite puertos típicos de Vite
+    if not allowed_origins:
+        allowed_origins = [
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://localhost:5175",
+        ]
+
     CORS(
         app,
-        resources={r"/api/*": {"origins": allowed_origins if allowed_origins else "*"}},
-        supports_credentials=True,
+        resources={r"/api/*": {"origins": allowed_origins}},
+        supports_credentials=True,  # con credenciales no se puede usar '*'
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
     )

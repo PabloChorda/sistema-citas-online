@@ -1,8 +1,7 @@
 // frontend/src/pages/BrowsePage.jsx
-
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
-import { getAllPublicEstablishments } from '../services/establishmentService';
+import { API_BASE } from '../api/http';
 
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
@@ -10,7 +9,6 @@ import { ArrowRightIcon, MapPinIcon } from '@heroicons/react/24/solid';
 
 const EstablishmentCard = ({ establishment }) => (
   <Card className="p-0 flex flex-col">
-    {/* Contenido */}
     <div className="p-6 flex-grow text-left">
       <h3 className="text-lg font-semibold text-gray-900">{establishment.nombre}</h3>
 
@@ -25,11 +23,10 @@ const EstablishmentCard = ({ establishment }) => (
       </div>
     </div>
 
-    {/* Footer con CTA visible */}
     <div className="bg-gray-50 px-6 py-4 mt-auto border-t">
       <Button
         to={`/booking/${establishment.id}`}
-        variant="secondary"                // sólido azul corporativo
+        variant="secondary"
         className="w-full sm:w-auto inline-flex items-center gap-2 group"
         aria-label={`Ver servicios y reservar en ${establishment.nombre}`}
       >
@@ -40,41 +37,40 @@ const EstablishmentCard = ({ establishment }) => (
   </Card>
 );
 
-const BrowsePage = () => {
+export default function BrowsePage() {
   const [establishments, setEstablishments] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Evita doble ejecución del efecto en dev (StrictMode)
-  const didLoad = useRef(false);
-
   useEffect(() => {
-    if (didLoad.current) return;
-    didLoad.current = true;
-
-    const ac = new AbortController();
+    let mounted = true;
 
     (async () => {
       try {
         setLoading(true);
-        const data = await getAllPublicEstablishments();
-        if (!ac.signal.aborted) {
-          // admite tanto array plano como objetos con items
-          const items = Array.isArray(data)
-            ? data
-            : (data && Array.isArray(data.items) ? data.items : []);
-          setEstablishments(items);
+        const res = await fetch(`${API_BASE}/public/establishments`, {
+          method: 'GET',
+          // estos endpoints públicos no requieren token; con CORS ya OK
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => '');
+          throw new Error(`GET /public/establishments ${res.status}: ${detail || res.statusText}`);
+        }
+        const data = await res.json();
+        if (mounted) {
+          console.log('[BrowsePage] establecimientos =>', data);
+          setEstablishments(Array.isArray(data) ? data : []);
         }
       } catch (err) {
-        toast.error('No se pudieron cargar los establecimientos.', { id: 'establishments-load' });
         console.error('Error fetching public establishments:', err);
+        toast.error('No se pudieron cargar los establecimientos.', { id: 'establishments-load' });
+        if (mounted) setEstablishments([]);
       } finally {
-        if (!ac.signal.aborted) {
-          setLoading(false);
-        }
+        if (mounted) setLoading(false);
       }
     })();
 
-    return () => ac.abort();
+    return () => { mounted = false; };
   }, []);
 
   return (
@@ -88,9 +84,7 @@ const BrowsePage = () => {
         </p>
       </header>
 
-      {loading && (
-        <p className="text-center text-gray-600">Cargando locales...</p>
-      )}
+      {loading && <p className="text-center text-gray-600">Cargando locales...</p>}
 
       {!loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
@@ -107,6 +101,4 @@ const BrowsePage = () => {
       )}
     </div>
   );
-};
-
-export default BrowsePage;
+}

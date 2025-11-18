@@ -1,6 +1,7 @@
 // frontend/src/services/establishmentService.js
 
 import { apiClient } from './apiClient';
+import { API_BASE } from '../api/http';
 
 /**
  * Crear establecimiento (panel proveedor)
@@ -89,15 +90,35 @@ export const getAvailableSlots = (establishmentId, serviceId, date, staffId = nu
 
 /**
  * Listado público (marketplace/directorio)
- * Devuelve SIEMPRE un array, normalizando distintas formas posibles del backend.
+ * FORZAMOS llamada sin Authorization para evitar refresh/token
+ * y seguimos normalizando a array.
  */
 export const getAllPublicEstablishments = async () => {
-  const res = await apiClient('/public/establishments', 'GET');
+  const res = await fetch(`${API_BASE}/public/establishments`, {
+    method: 'GET',
+    credentials: 'include',
+    // 👇 nada de Authorization aquí, así no entra en el flujo de refresh
+  });
 
-  if (Array.isArray(res)) return res;
-  if (res && Array.isArray(res.items)) return res.items;
-  if (res && Array.isArray(res.data)) return res.data;
-  if (res && Array.isArray(res.results)) return res.results;
+  if (!res.ok) {
+    let detail = '';
+    try {
+      detail = await res.text();
+    } catch {
+      // ignoramos error al leer el cuerpo
+    }
+    throw new Error(
+      `GET /public/establishments ${res.status}: ${detail || res.statusText}`
+    );
+  }
+
+  const data = await res.json();
+
+  // Normalización que ya tenías antes:
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.items)) return data.items;
+  if (data && Array.isArray(data.data)) return data.data;
+  if (data && Array.isArray(data.results)) return data.results;
 
   return [];
 };
