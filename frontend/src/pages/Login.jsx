@@ -10,7 +10,6 @@ import Input from '../components/ui/Input';
 
 import { setAccessToken, setRefreshToken } from '../api/http';
 import { useAuth } from '../context/AuthContext';
-import DemoQuickLogin from "../components/demo/DemoQuickLogin";
 
 // Util: decodifica el JWT (solo payload)
 function decodeJwt(token) {
@@ -40,6 +39,10 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // estado para el login demo por token pegado
+  const [showDemoModal, setShowDemoModal] = useState(false);
+  const [demoToken, setDemoToken] = useState('');
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -104,6 +107,30 @@ export default function Login() {
     }
   };
 
+  // Login con token demo pegado (sin refresh_token)
+  const handleDemoLogin = async () => {
+    try {
+      const token = demoToken.trim();
+      if (!token) return;
+
+      setAccessToken(token);
+
+      // Guardamos exp de access como en persistTokens
+      const a = decodeJwt(token);
+      if (a?.exp) {
+        localStorage.setItem('access_exp', String(a.exp));
+      }
+
+      setShowDemoModal(false);
+      setDemoToken('');
+      toast.success('Sesión demo iniciada');
+      await redirectAfterLogin();
+    } catch (e) {
+      console.error(e);
+      toast.error('Token demo inválido');
+    }
+  };
+
   return (
     <div className="auth-page">
       <div className="min-h-screen flex items-center justify-center px-4">
@@ -147,8 +174,18 @@ export default function Login() {
             </Button>
           </form>
 
-          {/* Bloque de acceso rápido por token (solo aparece en VITE_DEMO_MODE=1) */}
-          <DemoQuickLogin className="mt-4" />
+          {/* Bloque de acceso rápido por token demo (solo aparece en VITE_DEMO_MODE=1) */}
+          {import.meta.env.VITE_DEMO_MODE === '1' && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={() => setShowDemoModal(true)}
+                className="w-full rounded-md bg-amber-600 px-4 py-2 text-white hover:bg-amber-700"
+              >
+                Entrar con token demo
+              </button>
+            </div>
+          )}
 
           <footer className="text-sm text-center text-gray-600 space-y-2">
             <p>
@@ -171,6 +208,42 @@ export default function Login() {
           </footer>
         </main>
       </div>
+
+      {/* Modal para pegar token demo */}
+      {showDemoModal && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-lg bg-white p-4 shadow">
+            <h3 className="text-lg font-semibold mb-2">Pega tu token demo</h3>
+            <textarea
+              className="w-full border rounded p-2 text-sm"
+              rows={4}
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              value={demoToken}
+              onChange={e => setDemoToken(e.target.value)}
+            />
+            <div className="mt-3 flex items-center gap-2 justify-end">
+              <button
+                onClick={() => setShowDemoModal(false)}
+                className="px-3 py-2 rounded border"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDemoLogin}
+                className="px-3 py-2 rounded bg-amber-600 text-white hover:bg-amber-700"
+              >
+                Entrar
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-gray-500">
+              Saca el token con:
+              <code className="ml-1 bg-gray-100 px-1 py-0.5 rounded">
+                docker compose exec backend sh -lc "flask --app wsgi:app demo token"
+              </code>
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // frontend/src/pages/BookingPage.jsx
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 
@@ -11,6 +11,7 @@ import { getPublicStaffForEstablishment } from '../services/staffService';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import { getBlackouts } from '../services/calendarService';
+import { useAuth } from '../context/AuthContext';
 
 // Util: YYYY-MM-DD
 const toYYYYMMDD = (date) => {
@@ -41,6 +42,7 @@ const BookingPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { setBookingInfo } = useBooking();
+  const { isAuthenticated } = useAuth();
 
   const appointmentToRescheduleId = searchParams.get('reschedule_appointment_id');
   const serviceIdToLock = searchParams.get('service_id');
@@ -223,6 +225,16 @@ const BookingPage = () => {
         </p>
       </header>
 
+      {/* Aviso modo demo si no hay sesión */}
+      {import.meta.env.VITE_DEMO_MODE === '1' && !isAuthenticated && (
+        <div className="mb-4 rounded border border-amber-300 bg-amber-50 p-3 text-amber-900 max-w-2xl mx-auto">
+          Estás en modo demo. Para completar la reserva puedes{' '}
+          <Link to="/login" className="underline text-amber-900 font-medium">
+            entrar con token demo
+          </Link>.
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Columna izquierda */}
         <div className="md:col-span-2 space-y-8">
@@ -329,7 +341,7 @@ const BookingPage = () => {
                           left: '50%',
                           transform: 'translateX(-50%)',
                           fontSize: 12,
-                          lineHeight: 1
+                          lineHeight: 1,
                         }}
                       >
                         •

@@ -9,7 +9,14 @@ import Button from '../components/ui/Button';
 // Función helper para formatear fechas
 const formatDate = (dateString) => {
   if (!dateString) return '';
-  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+  const options = {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  };
   return new Date(dateString).toLocaleDateString('es-ES', options);
 };
 
@@ -29,13 +36,13 @@ const BookingSuccessPage = () => {
       <Card className="text-center max-w-lg w-full">
         {/* Usamos un icono de Heroicons, más consistente */}
         <div className="success-icon-wrapper mx-auto text-green-500">
-        <CheckCircleIcon />
+          <CheckCircleIcon />
         </div>
         <h1 className="mt-4 text-2xl font-bold text-gray-800">¡Reserva Confirmada!</h1>
         <p className="mt-2 text-gray-600">
           Hemos enviado un correo de confirmación con todos los detalles.
         </p>
-        
+
         {/* Resumen de la Cita */}
         <div className="text-left bg-gray-50 p-4 rounded-lg my-6 border border-gray-200">
           <h2 className="font-semibold text-lg mb-3">Resumen de tu Cita</h2>
